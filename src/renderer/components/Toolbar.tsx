@@ -1,4 +1,4 @@
-import { Bell, BellOff, Columns2, Grid2X2, Inbox, Lock, PanelRight, Plus, RefreshCw, Search, Settings, Square } from 'lucide-react';
+import { Bell, BellOff, Columns2, Grid2X2, Inbox, Lock, PanelRight, Plus, RefreshCw, Search, Settings, Square, SquarePlus } from 'lucide-react';
 import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
 
@@ -15,6 +15,7 @@ export function Toolbar(): JSX.Element {
     unreadNotifications,
     settings,
     toggleDnd,
+    newTab,
     lock
   } = useAppStore();
   const activeService = selectedServiceIds[0];
@@ -26,6 +27,9 @@ export function Toolbar(): JSX.Element {
       </button>
       <button className="icon-button" title="Reload" disabled={!activeService} onClick={() => activeService && void api.services.reload(activeService)}>
         <RefreshCw size={16} />
+      </button>
+      <button className="icon-button" title="New tab (Ctrl+T)" disabled={!activeService} onClick={() => activeService && void newTab(activeService)}>
+        <SquarePlus size={16} />
       </button>
       <div className="mx-2 h-6 w-px bg-line" />
       <button className={`icon-button ${layoutMode === 'single' ? 'border-accent text-white' : ''}`} title="Single view" onClick={() => void setLayoutMode('single')}>

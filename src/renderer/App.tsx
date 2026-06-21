@@ -49,6 +49,14 @@ export function App(): JSX.Element {
         event.preventDefault();
         setCommandOpen(true);
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 't') {
+        const state = useAppStore.getState();
+        const active = state.selectedServiceIds[0];
+        if (active) {
+          event.preventDefault();
+          void state.newTab(active);
+        }
+      }
     };
     window.addEventListener('keydown', keyHandler);
     return () => {

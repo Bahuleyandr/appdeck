@@ -48,9 +48,11 @@ export function TileLayout(): JSX.Element {
               return null;
             }
             const cell = slotRect(root, index, visibleServices.length, layoutMode);
+            // Strip only shows at 2+ tabs; single-tab services use the full pane.
+            const top = (tabs[service.id]?.length ?? 0) > 1 ? STRIP_H : 0;
             return {
               viewId: `${service.id}#${tab.id}`,
-              rect: { x: cell.x, y: cell.y + STRIP_H, width: cell.width, height: Math.max(0, cell.height - STRIP_H) }
+              rect: { x: cell.x, y: cell.y + top, width: cell.width, height: Math.max(0, cell.height - top) }
             };
           })
           .filter((entry): entry is { viewId: string; rect: { x: number; y: number; width: number; height: number } } => entry !== null);
@@ -87,7 +89,7 @@ export function TileLayout(): JSX.Element {
           const current = activeTab(service);
           return (
             <section key={service.id} className="relative flex flex-col overflow-hidden rounded-md border border-line bg-panel">
-              {!launcher && (
+              {!launcher && serviceTabs.length > 1 && (
                 <div className="flex h-[30px] shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-shell px-1">
                   {serviceTabs.map((tab) => (
                     <div
