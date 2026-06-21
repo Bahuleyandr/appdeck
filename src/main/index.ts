@@ -1,0 +1,228 @@
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, Tray } from 'electron';
+import { join } from 'node:path';
+import { APP_NAME, APP_PROTOCOL, DEFAULT_GLOBAL_HOTKEY } from '../shared/constants.js';
+import { openDatabase } from './db/connection.js';
+import { pruneOldNotifications } from './db/repositories/notifications.js';
+import { getBoolSetting, getSetting } from './db/repositories/settings.js';
+import { registerIpcHandlers } from './ipc/register.js';
+import { RecipeLoader } from './recipes/loader.js';
+import { AiService } from './services/aiService.js';
+import { AppLockService } from './services/appLock.js';
+import { BadgeService } from './services/badges.js';
+import { ExtensionManager } from './services/extensionManager.js';
+import { LinkRouter } from './services/linkRouter.js';
+import { NotificationService } from './services/notifications.js';
+import { SleepManager } from './services/sleepManager.js';
+import { TrackerBlocker } from './services/trackerBlock.js';
+import { UpdaterService } from './services/updater.js';
+import { FileSyncService } from './sync/fileSync.js';
+import { ServiceViewManager } from './views/serviceViewManager.js';
+import { createMainWindow } from './windows/mainWindow.js';
+
+let mainWindow: BrowserWindow | null = null;
+let viewManager: ServiceViewManager | null = null;
+let sleepManager: SleepManager | null = null;
+let lockService: AppLockService | null = null;
+let linkRouter: LinkRouter | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
+
+app.setAsDefaultProtocolClient(APP_PROTOCOL);
+
+const gotLock = app.requestSingleInstanceLock();
+
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const deepLink = argv.find((arg) => arg.startsWith(`${APP_PROTOCOL}://`));
+    if (deepLink) {
+      linkRouter?.route(deepLink);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    linkRouter?.route(url);
+  });
+
+  void app.whenReady().then(() => {
+    const dbContext = openDatabase();
+    const db = dbContext.db;
+    const recipeLoader = new RecipeLoader(db);
+    const bridgePreload = join(__dirname, '../preload/bridge.cjs');
+    const servicePreload = join(__dirname, '../preload/service.cjs');
+    mainWindow = createMainWindow(bridgePreload);
+
+    const sendPush = (channel: string, payload?: unknown): void => {
+      mainWindow?.webContents.send(channel, payload);
+    };
+
+    const trackerBlocker = new TrackerBlocker();
+    trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
+    const extensionManager = new ExtensionManager(db);
+
+    lockService = new AppLockService(db, () => {
+      viewManager?.hideAll();
+      sendPush('event:locked');
+    });
+
+    viewManager = new ServiceViewManager(
+      db,
+      dbContext.deviceId,
+      recipeLoader,
+      servicePreload,
+      sendPush,
+      () => lockService?.bumpIdleTimer(),
+      extensionManager,
+      trackerBlocker,
+      mainWindow
+    );
+
+    const badgeService = new BadgeService(() => mainWindow);
+    const notificationService = new NotificationService(
+      db,
+      () => mainWindow,
+      (instanceId) => sendPush('event:notification-clicked', { instanceId }),
+      () => getBoolSetting(db, 'global_dnd')
+    );
+    const fileSyncService = new FileSyncService(db);
+    fileSyncService.init();
+    const aiService = new AiService(db);
+    const updaterService = new UpdaterService(sendPush);
+    updaterService.init();
+    linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
+
+    pruneOldNotifications(db);
+    sleepManager = new SleepManager(db, viewManager);
+    sleepManager.start();
+
+    const toggleWindow = (): void => {
+      if (!mainWindow) {
+        return;
+      }
+      if (mainWindow.isVisible() && mainWindow.isFocused()) {
+        mainWindow.hide();
+      } else {
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.focus();
+      }
+    };
+
+    const registerHotkey = (): void => {
+      globalShortcut.unregisterAll();
+      const accelerator = getSetting(db, 'global_hotkey') || DEFAULT_GLOBAL_HOTKEY;
+      try {
+        globalShortcut.register(accelerator, toggleWindow);
+      } catch {
+        // Ignore invalid accelerator strings — the user can fix it in Settings.
+      }
+    };
+
+    registerIpcHandlers({
+      db,
+      deviceId: dbContext.deviceId,
+      recipeLoader,
+      viewManager,
+      notificationService,
+      badgeService,
+      lockService,
+      fileSyncService,
+      aiService,
+      linkRouter,
+      trackerBlocker,
+      updaterService,
+      sendPush,
+      sendDataChanged: () => {
+        sendPush('event:data-changed');
+        fileSyncService.scheduleSync();
+      },
+      onSettingsChanged: () => {
+        trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
+        registerHotkey();
+      }
+    });
+
+    const wireWindow = (window: BrowserWindow): void => {
+      window.on('focus', () => lockService?.bumpIdleTimer());
+      window.on('close', (event) => {
+        if (!isQuitting && getBoolSetting(db, 'close_to_tray')) {
+          event.preventDefault();
+          window.hide();
+        }
+      });
+      window.on('closed', () => {
+        viewManager?.destroyAll();
+        mainWindow = null;
+      });
+    };
+    wireWindow(mainWindow);
+
+    tray = new Tray(trayIcon());
+    tray.setToolTip(APP_NAME);
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Show AppDeck', click: toggleWindow },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          }
+        }
+      ])
+    );
+    tray.on('click', toggleWindow);
+
+    registerHotkey();
+
+    powerMonitor.on('lock-screen', () => lockService?.lock());
+    powerMonitor.on('suspend', () => lockService?.lock());
+
+    app.on('activate', () => {
+      if (!mainWindow) {
+        mainWindow = createMainWindow(bridgePreload);
+        viewManager?.setWindow(mainWindow);
+        wireWindow(mainWindow);
+      } else if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+    });
+
+    app.on('before-quit', () => {
+      isQuitting = true;
+      sleepManager?.stop();
+      fileSyncService.dispose();
+      globalShortcut.unregisterAll();
+      viewManager?.destroyAll();
+      ipcMain.removeAllListeners();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    // With close-to-tray the window hides rather than closes, so this only fires on a real quit.
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+}
+
+// 16x16 BGRA app-tinted square for the tray (no asset file needed).
+function trayIcon(): Electron.NativeImage {
+  const size = 16;
+  const buffer = Buffer.alloc(size * size * 4);
+  for (let i = 0; i < size * size; i += 1) {
+    const offset = i * 4;
+    buffer[offset] = 246; // B
+    buffer[offset + 1] = 130; // G
+    buffer[offset + 2] = 59; // R  -> #3b82f6-ish
+    buffer[offset + 3] = 255; // A
+  }
+  return nativeImage.createFromBitmap(buffer, { width: size, height: size });
+}
