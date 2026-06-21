@@ -1,5 +1,6 @@
 import type { Recipe } from '../types.js';
 import { discordRecipe } from './discord.js';
+import { extraRecipes } from './extra.js';
 import { gmailRecipe } from './gmail.js';
 import { messengerRecipe } from './messenger.js';
 import { signalRecipe } from './signal.js';
@@ -14,5 +15,6 @@ export const builtinRecipes: Recipe[] = [
   discordRecipe,
   messengerRecipe,
   gmailRecipe,
-  signalRecipe
+  signalRecipe,
+  ...extraRecipes
 ];

@@ -53,6 +53,7 @@ export class RecipeLoader {
         allowedDomains: builtin.allowedDomains,
         defaultUserAgent: instance.user_agent ?? builtin.defaultUserAgent,
         builtinUnreadId: builtin.getUnread ? builtin.id : undefined,
+        unreadSpec: builtin.unread,
         pollIntervalMs: builtin.pollIntervalMs ?? 4000,
         isLauncherOnly: Boolean(builtin.isLauncherOnly),
         mobileMode: false,

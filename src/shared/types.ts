@@ -1,4 +1,4 @@
-export type ServiceCategory = 'Chat' | 'Email' | 'Social' | 'Dev' | 'AI' | 'Other';
+export type ServiceCategory = 'Chat' | 'Email' | 'Social' | 'Dev' | 'AI' | 'Productivity' | 'Media' | 'Other';
 
 export interface UnreadCount {
   direct: number;
@@ -123,6 +123,8 @@ export interface Recipe {
   allowedDomains: string[];
   defaultUserAgent?: string;
   getUnread?: (doc: Document) => UnreadCount;
+  /** Declarative unread spec (title regex / selector) — evaluated in-page, no per-service code. */
+  unread?: DeclarativeUnreadSpec;
   pollIntervalMs?: number;
   isLauncherOnly?: boolean;
   launcherHint?: string;

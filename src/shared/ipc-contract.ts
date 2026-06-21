@@ -29,7 +29,7 @@ export const declarativeUnreadSpecSchema = z
   })
   .nullable();
 
-export const serviceCategorySchema = z.enum(['Chat', 'Email', 'Social', 'Dev', 'AI', 'Other']);
+export const serviceCategorySchema = z.enum(['Chat', 'Email', 'Social', 'Dev', 'AI', 'Productivity', 'Media', 'Other']);
 export const layoutModeSchema = z.enum(['single', 'split', 'grid']);
 
 export const workspacePatchSchema = z.object({
