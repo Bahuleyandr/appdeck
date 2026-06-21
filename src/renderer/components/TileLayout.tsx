@@ -10,9 +10,10 @@ export function TileLayout(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { services, selectedServiceIds, layoutMode, serviceStates, tabs, loadTabs, newTab, closeTab, selectTab, settingsOpen, catalogOpen, commandOpen, taskPanelOpen, inboxOpen, locked, settings } =
     useAppStore();
-  // Native WebContentsViews always paint above the HTML layer, so any React overlay would be
-  // hidden behind them. Detach all panes while an overlay/modal is open.
-  const overlayOpen = settingsOpen || catalogOpen || commandOpen || taskPanelOpen || inboxOpen || locked || settings.onboarded !== 'true';
+  // Native WebContentsViews paint above the HTML layer. Full-screen modals must hide the panes
+  // entirely; side panels (Inbox/Tasks) are flex columns that shrink the container instead, so the
+  // ResizeObserver recomputes pane bounds to the narrower area — no overlap, service stays visible.
+  const modalOpen = settingsOpen || catalogOpen || commandOpen || locked || settings.onboarded !== 'true';
 
   const visibleServices = useMemo(() => {
     const selected = selectedServiceIds
@@ -43,7 +44,7 @@ export function TileLayout(): JSX.Element {
     const syncBounds = (): void => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        if (overlayOpen) {
+        if (modalOpen) {
           void api.views.setBounds({ entries: [], visibleIds: [] });
           return;
         }
@@ -75,7 +76,7 @@ export function TileLayout(): JSX.Element {
       observer.disconnect();
       void api.views.setBounds({ entries: [], visibleIds: [] });
     };
-  }, [layoutMode, visibleServices, serviceStates, tabs, overlayOpen]);
+  }, [layoutMode, visibleServices, serviceStates, tabs, modalOpen, inboxOpen, taskPanelOpen]);
 
   if (!visibleServices.length) {
     return (

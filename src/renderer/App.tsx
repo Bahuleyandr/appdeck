@@ -77,10 +77,10 @@ export function App(): JSX.Element {
         <Toolbar />
         <TileLayout />
       </div>
+      <InboxPanel />
+      <TaskPanel />
       <ServiceCatalog />
       <CommandPalette />
-      <TaskPanel />
-      <InboxPanel />
       <Settings />
       <Onboarding />
       <LockScreen />

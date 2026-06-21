@@ -40,7 +40,7 @@ export function InboxPanel(): JSX.Element | null {
   };
 
   return (
-    <aside className="absolute right-0 top-0 z-30 flex h-full w-96 flex-col border-l border-line bg-panel shadow-2xl">
+    <aside className="flex h-full w-96 shrink-0 flex-col border-l border-line bg-panel">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-3">
         <div className="text-sm font-semibold">Inbox</div>
         <div className="flex items-center gap-1">

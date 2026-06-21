@@ -7,7 +7,7 @@ export function TaskPanel(): JSX.Element | null {
   const [title, setTitle] = useState('');
   if (!taskPanelOpen) return null;
   return (
-    <aside className="absolute right-0 top-0 z-30 flex h-full w-80 flex-col border-l border-line bg-panel shadow-2xl">
+    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-line bg-panel">
       <header className="flex h-12 items-center justify-between border-b border-line px-3">
         <div className="text-sm font-semibold">Tasks</div>
         <button className="icon-button" title="Close" onClick={() => setTaskPanelOpen(false)}>
