@@ -17,18 +17,36 @@ export function Settings(): JSX.Element | null {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<AppMetrics | null>(null);
   const [updateStatus, setUpdateStatus] = useState('');
+  const [account, setAccount] = useState<{ configured: boolean; email?: string }>({ configured: false });
+  const [serverUrl, setServerUrl] = useState('');
+  const [accEmail, setAccEmail] = useState('');
+  const [accPassword, setAccPassword] = useState('');
+  const [accMsg, setAccMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settingsOpen) return undefined;
     void api.extensions.list().then(setExtensions);
     void api.metrics.get().then(setMetrics);
     void api.update.status().then((status) => setUpdateStatus(status.status));
+    void api.account.status().then(setAccount);
     return api.on('event:update-status', (payload) => setUpdateStatus((payload as { status?: string }).status ?? ''));
   }, [settingsOpen]);
 
   if (!settingsOpen) return null;
 
   const refreshExtensions = (): void => void api.extensions.list().then(setExtensions);
+
+  const runAccount = async (fn: () => Promise<void>, ok: string): Promise<void> => {
+    setAccMsg(null);
+    try {
+      await fn();
+      setAccMsg(ok);
+      setAccount(await api.account.status());
+      setAccPassword('');
+    } catch (error) {
+      setAccMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55">
@@ -152,6 +170,48 @@ export function Settings(): JSX.Element | null {
               </button>
             </div>
             {recovery ? <textarea className="field mt-2 h-20 w-full py-2" readOnly value={recovery} /> : null}
+          </section>
+
+          <section>
+            <div className="mb-1 text-sm font-semibold">Account (cloud sync)</div>
+            <div className="mb-2 text-xs text-muted">
+              {account.configured ? `Signed in as ${account.email ?? ''}` : 'Sign in to sync across devices via a server (end-to-end encrypted).'}
+            </div>
+            {account.configured ? (
+              <div className="flex gap-2">
+                <button className="app-button" onClick={() => void runAccount(() => api.account.syncNow(), 'Synced.')}>
+                  Sync now
+                </button>
+                <button className="app-button" onClick={() => void runAccount(() => api.account.logout(), 'Signed out.')}>
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <>
+                <input className="field mb-2 w-full" value={serverUrl} placeholder="Server URL (https://appdeck-sync.you.workers.dev)" onChange={(event) => setServerUrl(event.target.value)} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="field" value={accEmail} placeholder="Email" onChange={(event) => setAccEmail(event.target.value)} />
+                  <input className="field" type="password" value={accPassword} placeholder="Password" onChange={(event) => setAccPassword(event.target.value)} />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="app-button"
+                    disabled={!serverUrl.trim() || !accEmail.trim() || accPassword.length < 8}
+                    onClick={() => void runAccount(() => api.account.signup(serverUrl, accEmail, accPassword), 'Account created + synced.')}
+                  >
+                    Sign up
+                  </button>
+                  <button
+                    className="app-button"
+                    disabled={!serverUrl.trim() || !accEmail.trim() || !accPassword}
+                    onClick={() => void runAccount(() => api.account.login(serverUrl, accEmail, accPassword), 'Logged in + synced.')}
+                  >
+                    Log in
+                  </button>
+                </div>
+              </>
+            )}
+            {accMsg && <div className="mt-2 text-xs text-muted">{accMsg}</div>}
           </section>
 
           <section>

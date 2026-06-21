@@ -144,5 +144,12 @@ export const api = {
     check: () => invoke<{ status: string }>('update:check'),
     install: () => invoke<void>('update:install')
   },
+  account: {
+    status: () => invoke<{ configured: boolean; email?: string }>('account:status'),
+    signup: (serverUrl: string, email: string, password: string) => invoke<void>('account:signup', { serverUrl, email, password }),
+    login: (serverUrl: string, email: string, password: string) => invoke<void>('account:login', { serverUrl, email, password }),
+    logout: () => invoke<void>('account:logout'),
+    syncNow: () => invoke<void>('account:syncNow')
+  },
   on: (channel: PushChannel, callback: (payload: unknown) => void) => window.appdeck.on(channel, callback)
 };

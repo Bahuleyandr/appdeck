@@ -1,0 +1,11 @@
+name = "appdeck-sync"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Create the DB with `wrangler d1 create appdeck` and paste the returned id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "appdeck"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# TOKEN_SECRET is NOT set here — add it with `wrangler secret put TOKEN_SECRET`.

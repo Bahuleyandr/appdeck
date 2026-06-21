@@ -15,6 +15,7 @@ import { NotificationService } from './services/notifications.js';
 import { SleepManager } from './services/sleepManager.js';
 import { TrackerBlocker } from './services/trackerBlock.js';
 import { UpdaterService } from './services/updater.js';
+import { CloudSyncService } from './sync/cloudSync.js';
 import { FileSyncService } from './sync/fileSync.js';
 import { ServiceViewManager } from './views/serviceViewManager.js';
 import { createMainWindow } from './windows/mainWindow.js';
@@ -99,6 +100,7 @@ if (!gotLock) {
     );
     const fileSyncService = new FileSyncService(db);
     fileSyncService.init();
+    const cloudSyncService = new CloudSyncService(db);
     const aiService = new AiService(db);
     const updaterService = new UpdaterService(sendPush);
     updaterService.init();
@@ -139,6 +141,7 @@ if (!gotLock) {
       badgeService,
       lockService,
       fileSyncService,
+      cloudSyncService,
       aiService,
       linkRouter,
       trackerBlocker,
@@ -147,6 +150,7 @@ if (!gotLock) {
       sendDataChanged: () => {
         sendPush('event:data-changed');
         fileSyncService.scheduleSync();
+        cloudSyncService.scheduleSync();
       },
       onSettingsChanged: () => {
         trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
@@ -205,6 +209,7 @@ if (!gotLock) {
       isQuitting = true;
       sleepManager?.stop();
       fileSyncService.dispose();
+      cloudSyncService.dispose();
       globalShortcut.unregisterAll();
       viewManager?.destroyAll();
       ipcMain.removeAllListeners();

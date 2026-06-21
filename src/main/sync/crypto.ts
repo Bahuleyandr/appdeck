@@ -38,6 +38,21 @@ export async function deriveKek(passphrase: string, salt: Uint8Array): Promise<U
   );
 }
 
+/** Fresh Argon2id salt (base64), for the account auth hash. */
+export async function newAuthSalt(): Promise<string> {
+  const s = await sodiumReady();
+  return Buffer.from(s.randombytes_buf(s.crypto_pwhash_SALTBYTES)).toString('base64');
+}
+
+/**
+ * Auth hash sent to the sync server for login. Domain-separated from key wrapping by using its own
+ * salt — the server only ever sees this digest, never anything that can decrypt the vault.
+ */
+export async function deriveAuthHash(passphrase: string, saltB64: string): Promise<string> {
+  const salt = Uint8Array.from(Buffer.from(saltB64, 'base64'));
+  return Buffer.from(await deriveKek(passphrase, salt)).toString('base64');
+}
+
 export async function wrapRootKey(rootKey: Uint8Array, passphrase: string): Promise<WrappedRootKey> {
   const s = await sodiumReady();
   const salt = s.randombytes_buf(s.crypto_pwhash_SALTBYTES);

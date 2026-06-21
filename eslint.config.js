@@ -8,6 +8,7 @@ export default tseslint.config(
       'out/**',
       'out-tsc/**',
       'node_modules/**',
+      'server/**',
       '*.config.ts',
       '*.config.cjs',
       'eslint.config.js',

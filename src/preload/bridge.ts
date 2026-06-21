@@ -73,7 +73,12 @@ const allowedInvokeChannels = new Set<string>([
   'settings:set',
   'update:status',
   'update:check',
-  'update:install'
+  'update:install',
+  'account:status',
+  'account:signup',
+  'account:login',
+  'account:logout',
+  'account:syncNow'
 ]);
 const allowedPushChannels = new Set<string>([
   'event:unread',

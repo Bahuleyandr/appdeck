@@ -168,7 +168,13 @@ export const ipcSchemas = {
 
   'update:status': z.void(),
   'update:check': z.void(),
-  'update:install': z.void()
+  'update:install': z.void(),
+
+  'account:status': z.void(),
+  'account:signup': z.object({ serverUrl: z.string().min(1), email: z.string().email(), password: z.string().min(8) }),
+  'account:login': z.object({ serverUrl: z.string().min(1), email: z.string().email(), password: z.string().min(1) }),
+  'account:logout': z.void(),
+  'account:syncNow': z.void()
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;

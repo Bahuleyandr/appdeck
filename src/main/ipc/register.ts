@@ -38,6 +38,7 @@ import { NotificationService } from '../services/notifications.js';
 import { TrackerBlocker } from '../services/trackerBlock.js';
 import { UpdaterService } from '../services/updater.js';
 import { RecipeLoader } from '../recipes/loader.js';
+import { CloudSyncService } from '../sync/cloudSync.js';
 import { FileSyncService } from '../sync/fileSync.js';
 import { ServiceViewManager } from '../views/serviceViewManager.js';
 
@@ -50,6 +51,7 @@ export interface IpcContext {
   badgeService: BadgeService;
   lockService: AppLockService;
   fileSyncService: FileSyncService;
+  cloudSyncService: CloudSyncService;
   aiService: AiService;
   linkRouter: LinkRouter;
   trackerBlocker: TrackerBlocker;
@@ -340,7 +342,24 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'update:status': () => ctx.updaterService.status(),
     'update:check': () => ctx.updaterService.check(),
-    'update:install': () => ctx.updaterService.install()
+    'update:install': () => ctx.updaterService.install(),
+
+    'account:status': () => ctx.cloudSyncService.status(),
+    'account:signup': async (payload) => {
+      const input = parseIpcPayload('account:signup', payload);
+      await ctx.cloudSyncService.signup(input.serverUrl, input.email, input.password);
+      ctx.sendDataChanged();
+    },
+    'account:login': async (payload) => {
+      const input = parseIpcPayload('account:login', payload);
+      await ctx.cloudSyncService.login(input.serverUrl, input.email, input.password);
+      ctx.sendDataChanged();
+    },
+    'account:logout': () => {
+      ctx.cloudSyncService.logout();
+      ctx.sendDataChanged();
+    },
+    'account:syncNow': () => ctx.cloudSyncService.syncNow()
   };
 
   for (const [channel, handler] of Object.entries(handlers) as Array<[IpcChannel, Handler]>) {
