@@ -32,18 +32,18 @@ export function Toolbar(): JSX.Element {
         <SquarePlus size={16} />
       </button>
       <div className="mx-2 h-6 w-px bg-line" />
-      <button className={`icon-button ${layoutMode === 'single' ? 'border-accent text-white' : ''}`} title="Single view" onClick={() => void setLayoutMode('single')}>
+      <button className={`icon-button ${layoutMode === 'single' ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''}`} title="Single view" onClick={() => void setLayoutMode('single')}>
         <Square size={16} />
       </button>
-      <button className={`icon-button ${layoutMode === 'split' ? 'border-accent text-white' : ''}`} title="Split view" onClick={() => void setLayoutMode('split')}>
+      <button className={`icon-button ${layoutMode === 'split' ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''}`} title="Split view" onClick={() => void setLayoutMode('split')}>
         <Columns2 size={16} />
       </button>
-      <button className={`icon-button ${layoutMode === 'grid' ? 'border-accent text-white' : ''}`} title="Grid view" onClick={() => void setLayoutMode('grid')}>
+      <button className={`icon-button ${layoutMode === 'grid' ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''}`} title="Grid view" onClick={() => void setLayoutMode('grid')}>
         <Grid2X2 size={16} />
       </button>
       <div className="flex-1" />
       <button
-        className={`icon-button ${dnd ? 'border-accent text-white' : ''}`}
+        className={`icon-button ${dnd ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''}`}
         title={dnd ? 'Do Not Disturb on' : 'Do Not Disturb off'}
         onClick={() => void toggleDnd()}
       >

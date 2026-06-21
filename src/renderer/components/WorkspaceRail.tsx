@@ -10,7 +10,7 @@ export function WorkspaceRail(): JSX.Element {
         return (
           <button
             key={workspace.id}
-            className={`icon-button relative ${selected ? 'border-accent text-white' : ''}`}
+            className={`icon-button relative ${selected ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''}`}
             title={workspace.name}
             onClick={() => void selectWorkspace(workspace.id)}
           >
