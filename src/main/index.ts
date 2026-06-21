@@ -52,6 +52,12 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(() => {
+    // Strip the Electron + app tokens from the UA so UA-sniffing services (WhatsApp Web, Google,
+    // etc.) treat us as plain Chrome instead of rejecting an unknown browser.
+    app.userAgentFallback = app.userAgentFallback
+      .replace(/ Electron\/[\d.]+/i, '')
+      .replace(new RegExp(` ${app.getName()}\\/[\\d.]+`, 'i'), '');
+
     const dbContext = openDatabase();
     const db = dbContext.db;
     const recipeLoader = new RecipeLoader(db);

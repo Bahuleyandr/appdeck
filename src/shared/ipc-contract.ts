@@ -3,11 +3,12 @@ import { z } from 'zod';
 export const idSchema = z.string().min(1);
 export const optionalStringSchema = z.string().min(1).nullable().optional();
 
+// Fractional values from getBoundingClientRect are expected; main rounds + clamps in normalizeRect.
 export const rectSchema = z.object({
-  x: z.number().int().nonnegative(),
-  y: z.number().int().nonnegative(),
-  width: z.number().int().nonnegative(),
-  height: z.number().int().nonnegative()
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number()
 });
 
 export const sleepPolicySchema = z.object({ idleMinutes: z.number().int().positive().nullable().optional() });

@@ -15,9 +15,9 @@
     "format": "prettier --write .",
     "test": "npm run rebuild:node && vitest run",
     "test:e2e": "npm run rebuild:electron && npm run build && playwright test",
-    "dist": "npm run build && electron-builder --publish never",
-    "dist:portable": "npm run build && electron-builder --win portable --publish never",
-    "release": "npm run build && electron-builder --publish always",
+    "dist": "npm run build && npm run rebuild:electron && electron-builder --publish never -c.npmRebuild=false",
+    "dist:portable": "npm run build && npm run rebuild:electron && electron-builder --win portable --publish never -c.npmRebuild=false",
+    "release": "npm run build && npm run rebuild:electron && electron-builder --publish always -c.npmRebuild=false",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
