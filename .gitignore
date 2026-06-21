@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+out-tsc/
 .vite/
 test-results/
 playwright-report/
