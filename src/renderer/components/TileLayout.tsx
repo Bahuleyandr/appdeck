@@ -8,7 +8,11 @@ const STRIP_H = 30;
 
 export function TileLayout(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { services, selectedServiceIds, layoutMode, serviceStates, tabs, loadTabs, newTab, closeTab, selectTab } = useAppStore();
+  const { services, selectedServiceIds, layoutMode, serviceStates, tabs, loadTabs, newTab, closeTab, selectTab, settingsOpen, catalogOpen, commandOpen, taskPanelOpen, inboxOpen, locked, settings } =
+    useAppStore();
+  // Native WebContentsViews always paint above the HTML layer, so any React overlay would be
+  // hidden behind them. Detach all panes while an overlay/modal is open.
+  const overlayOpen = settingsOpen || catalogOpen || commandOpen || taskPanelOpen || inboxOpen || locked || settings.onboarded !== 'true';
 
   const visibleServices = useMemo(() => {
     const selected = selectedServiceIds
@@ -39,6 +43,10 @@ export function TileLayout(): JSX.Element {
     const syncBounds = (): void => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
+        if (overlayOpen) {
+          void api.views.setBounds({ entries: [], visibleIds: [] });
+          return;
+        }
         const root = node.getBoundingClientRect();
         const entries = visibleServices
           .map((service, index) => {
@@ -67,7 +75,7 @@ export function TileLayout(): JSX.Element {
       observer.disconnect();
       void api.views.setBounds({ entries: [], visibleIds: [] });
     };
-  }, [layoutMode, visibleServices, serviceStates, tabs]);
+  }, [layoutMode, visibleServices, serviceStates, tabs, overlayOpen]);
 
   if (!visibleServices.length) {
     return (
