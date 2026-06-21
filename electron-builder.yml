@@ -10,6 +10,7 @@ asarUnpack:
   - node_modules/bindings/**
   - node_modules/file-uri-to-path/**
 win:
+  icon: build/icon.ico
   target:
     - nsis
     - portable
@@ -17,10 +18,14 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
 mac:
+  icon: build/icon.png
   target:
     - dmg
 linux:
+  icon: build/icon.png
   target:
     - AppImage
     - deb

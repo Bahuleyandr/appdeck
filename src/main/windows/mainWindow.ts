@@ -9,6 +9,7 @@ export function createMainWindow(preloadPath: string): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     title: APP_NAME,
+    icon: join(__dirname, '../../build/icon.png'),
     backgroundColor: '#101216',
     show: false,
     webPreferences: {
