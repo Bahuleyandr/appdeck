@@ -75,6 +75,7 @@ interface ManagedView {
 export class ServiceViewManager {
   // Keyed by viewId = `${instanceId}#${tabId}`. All tabs of an instance share its partition.
   private readonly views = new Map<string, ManagedView>();
+  private readonly pendingNavigations = new Map<string, string>();
   private readonly configuredSessions = new WeakSet<Session>();
   private activeInstanceId: string | null = null;
   private visibleIds = new Set<string>();
@@ -151,6 +152,17 @@ export class ServiceViewManager {
     if (!isHttpUrl(url)) return;
     const contents = this.contentsFor(idOrViewId);
     if (contents) void contents.loadURL(url);
+  }
+
+  routeNavigate(instanceId: string, url: string): void {
+    if (!isHttpUrl(url)) return;
+    const contents = this.contentsFor(instanceId);
+    if (contents) {
+      void contents.loadURL(url);
+      return;
+    }
+    this.pendingNavigations.set(instanceId, url);
+    this.wake(instanceId);
   }
 
   currentUrl(idOrViewId: string): string | null {
@@ -260,7 +272,9 @@ export class ServiceViewManager {
     }
     const tabId = tabIdOf(viewId);
     const tab = tabId ? getTab(this.db, tabId) : null;
-    const requestedStartUrl = tab?.url ?? instance.last_url ?? resolved.startUrl;
+    const pendingUrl = this.pendingNavigations.get(instance.id);
+    this.pendingNavigations.delete(instance.id);
+    const requestedStartUrl = pendingUrl ?? tab?.url ?? instance.last_url ?? resolved.startUrl;
     const startUrl = isHttpUrl(requestedStartUrl)
       ? requestedStartUrl
       : isHttpUrl(resolved.startUrl)

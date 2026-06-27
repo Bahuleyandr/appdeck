@@ -44,8 +44,7 @@ export class LinkRouter {
   }
 
   private routeTo(instanceId: string, target: string): void {
-    this.viewManager.wake(instanceId);
-    this.viewManager.navigate(instanceId, target);
+    this.viewManager.routeNavigate(instanceId, target);
     this.viewManager.focus(instanceId);
     this.sendPush('event:notification-clicked', { instanceId });
   }
