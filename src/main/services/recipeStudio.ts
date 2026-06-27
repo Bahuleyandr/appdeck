@@ -36,6 +36,74 @@ export function analyzeRecipeDraft(input: {
   };
 }
 
+export async function analyzeRecipeDraftLive(
+  input: {
+    name: string;
+    url: string;
+    category?: ServiceCategory;
+  },
+  fetcher: typeof fetch = fetch
+): Promise<RecipeStudioAnalysis> {
+  const analysis = analyzeRecipeDraft(input);
+  if (!analysis.valid) return analysis;
+  try {
+    const response = await fetcher(input.url, {
+      headers: {
+        'user-agent': 'AppDeck Recipe Studio'
+      }
+    });
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!response.ok || !contentType.includes('text/html')) {
+      analysis.suggestions.push(`Live test returned HTTP ${response.status}.`);
+      return analysis;
+    }
+    const html = await response.text();
+    const pageTitle = tagContent(html, 'title');
+    const icon = absolutizeUrl(
+      attrFromFirstTag(html, 'link', 'href', (tag) => /\b(?:icon|apple-touch-icon)\b/i.test(tag)),
+      input.url
+    );
+    const manifest = absolutizeUrl(
+      attrFromFirstTag(html, 'link', 'href', (tag) => /\bmanifest\b/i.test(tag)),
+      input.url
+    );
+    const domains = new Set(analysis.recipe.allowed_domains ?? []);
+    for (const href of linkHrefs(html)) {
+      const host = hostOf(absolutizeUrl(href, input.url) ?? '');
+      if (host && /(login|auth|account|sso|oauth|id\.)/i.test(href)) {
+        domains.add(host);
+      }
+    }
+    if (manifest) {
+      const manifestHost = hostOf(manifest);
+      if (manifestHost) domains.add(manifestHost);
+    }
+    const unreadSelector = detectUnreadSelector(html);
+    analysis.recipe = {
+      ...analysis.recipe,
+      name: pageTitle || analysis.recipe.name,
+      icon: icon ?? analysis.recipe.icon,
+      allowed_domains: [...domains],
+      mobile_mode: /<meta[^>]+name=["']viewport["']/i.test(html),
+      unread_spec: unreadSelector ? { selector: unreadSelector } : analysis.recipe.unread_spec
+    };
+    if (manifest) analysis.suggestions.push(`Manifest detected at ${manifest}.`);
+    if (/Notification\.requestPermission|new Notification|serviceWorker\.register/i.test(html)) {
+      analysis.suggestions.push('Page appears to use notifications or service workers.');
+    }
+    if (unreadSelector) {
+      analysis.suggestions.push(`Unread selector candidate: ${unreadSelector}.`);
+    }
+    analysis.suggestions.push('Live page fetched successfully.');
+    return analysis;
+  } catch (error) {
+    analysis.suggestions.push(
+      `Live detection failed: ${error instanceof Error ? error.message : 'unknown error'}.`
+    );
+    return analysis;
+  }
+}
+
 export function createRecipeFromStudio(
   db: Database.Database,
   input: {
@@ -90,6 +158,54 @@ function aliasSuggestions(name: string, host: string | null): string[] {
     aliases.add(host.replace(/^www\./, '').split('.')[0] ?? host);
   }
   return [...aliases].filter(Boolean);
+}
+
+function tagContent(html: string, tagName: string): string | null {
+  const match = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i').exec(html);
+  return match?.[1]?.replace(/\s+/g, ' ').trim() || null;
+}
+
+function attrFromFirstTag(
+  html: string,
+  tagName: string,
+  attr: string,
+  predicate: (tag: string) => boolean
+): string | null {
+  const tags = html.match(new RegExp(`<${tagName}\\b[^>]*>`, 'gi')) ?? [];
+  for (const tag of tags) {
+    if (!predicate(tag)) continue;
+    const value = attrValue(tag, attr);
+    if (value) return value;
+  }
+  return null;
+}
+
+function linkHrefs(html: string): string[] {
+  return (html.match(/<a\b[^>]*>/gi) ?? []).map((tag) => attrValue(tag, 'href')).filter(Boolean);
+}
+
+function attrValue(tag: string, attr: string): string {
+  const match = new RegExp(`${attr}\\s*=\\s*["']([^"']+)["']`, 'i').exec(tag);
+  return match?.[1]?.trim() ?? '';
+}
+
+function absolutizeUrl(value: string | null, base: string): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function detectUnreadSelector(html: string): string | null {
+  const classAttrMatch = /\bclass=["']([^"']*(?:unread|badge|count)[^"']*)["']/i.exec(html);
+  const classToken = classAttrMatch?.[1]
+    ?.split(/\s+/)
+    .find((token) => /unread|badge|count/i.test(token));
+  if (classToken) return `.${classToken}`;
+  const idMatch = /\bid=["']([^"']*(?:unread|badge|count)[^"']*)["']/i.exec(html);
+  return idMatch?.[1] ? `#${idMatch[1]}` : null;
 }
 
 function slug(value: string): string {

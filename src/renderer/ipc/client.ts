@@ -25,6 +25,7 @@ import type {
   PermissionPolicy,
   PaletteItem,
   PeerSyncPeer,
+  PeerSyncRunResult,
   PeerSyncStatus,
   PersonalAnalytics,
   PerformanceStatus,
@@ -36,6 +37,8 @@ import type {
   RecipeStudioAnalysis,
   RecipeRegistryEntry,
   RecipeCatalogItem,
+  RepairResult,
+  RepairStatus,
   SavedTabSession,
   ServiceInstance,
   ServiceTab,
@@ -274,6 +277,10 @@ export const api = {
   analytics: {
     personal: () => invoke<PersonalAnalytics>('analytics:personal')
   },
+  repair: {
+    status: () => invoke<RepairStatus>('repair:status'),
+    run: () => invoke<RepairResult>('repair:run')
+  },
   portable: {
     status: () => invoke<PortableModeStatus>('portable:status'),
     configure: (enabled: boolean, rootPath?: string | null) =>
@@ -283,6 +290,7 @@ export const api = {
     status: () => invoke<PeerSyncStatus>('peerSync:status'),
     upsert: (payload: Partial<PeerSyncPeer> & Pick<PeerSyncPeer, 'label' | 'endpoint'>) =>
       invoke<PeerSyncPeer>('peerSync:upsert', payload),
+    sync: (id: string) => invoke<PeerSyncRunResult>('peerSync:sync', { id }),
     delete: (id: string) => invoke<void>('peerSync:delete', { id })
   },
   workKits: {

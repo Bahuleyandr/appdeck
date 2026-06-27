@@ -446,7 +446,26 @@ export interface PeerSyncPeer {
 export interface PeerSyncStatus {
   deviceId: string;
   peers: PeerSyncPeer[];
+  localEndpoint?: string | null;
   discoveryHint: string;
+}
+
+export interface PeerSyncRunResult extends SyncResult {
+  peerId: string;
+  status: 'synced' | 'skipped' | 'failed';
+  error?: string;
+}
+
+export interface RepairStatus {
+  integrityOk: boolean;
+  integrityMessages: string[];
+  invalidLastUrls: string[];
+  missingRecipes: string[];
+  safeModeRecommended: boolean;
+}
+
+export interface RepairResult extends RepairStatus {
+  fixed: number;
 }
 
 export interface WorkKit {

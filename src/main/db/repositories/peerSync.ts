@@ -61,3 +61,11 @@ export function upsertPeerSyncPeer(
 export function deletePeerSyncPeer(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM peer_sync_peers WHERE id = ?').run(id);
 }
+
+export function markPeerSeen(db: Database.Database, id: string): void {
+  db.prepare('UPDATE peer_sync_peers SET last_seen_at = ?, updated_at = ? WHERE id = ?').run(
+    Date.now(),
+    Date.now(),
+    id
+  );
+}

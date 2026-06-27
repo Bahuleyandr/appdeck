@@ -361,6 +361,9 @@ export const ipcSchemas = {
 
   'analytics:personal': z.void(),
 
+  'repair:status': z.void(),
+  'repair:run': z.void(),
+
   'portable:status': z.void(),
   'portable:configure': z.object({
     enabled: z.boolean(),
@@ -374,6 +377,7 @@ export const ipcSchemas = {
     endpoint: z.string().min(1),
     enabled: z.boolean().optional()
   }),
+  'peerSync:sync': z.object({ id: idSchema }),
   'peerSync:delete': z.object({ id: idSchema }),
 
   'workKit:list': z.void(),

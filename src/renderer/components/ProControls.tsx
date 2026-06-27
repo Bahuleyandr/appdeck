@@ -33,6 +33,7 @@ import type {
   RecipePackValidation,
   RecipeRegistryEntry,
   RecipeStudioAnalysis,
+  RepairStatus,
   ShortcutBinding,
   ServiceCategory,
   ServiceInstance,
@@ -101,6 +102,7 @@ export function ProControls(): JSX.Element | null {
   const [panel, setPanel] = useState<Panel>('workspaces');
   const [extensions, setExtensions] = useState<ExtensionRecord[]>([]);
   const [metrics, setMetrics] = useState<AppMetrics | null>(null);
+  const [repairStatus, setRepairStatus] = useState<RepairStatus | null>(null);
   const [registryStats, setRegistryStats] = useState<{
     total: number;
     seed: number;
@@ -135,6 +137,7 @@ export function ProControls(): JSX.Element | null {
     if (!proControlsOpen) return;
     void api.extensions.list().then(setExtensions);
     void api.metrics.get().then(setMetrics);
+    void api.repair.status().then(setRepairStatus);
     void api.registry.stats().then(setRegistryStats);
     void api.linkRules.list().then(setLinkRules);
     void api.dashboards.list(selectedWorkspaceId).then(setDashboards);
@@ -393,7 +396,12 @@ export function ProControls(): JSX.Element | null {
               />
             )}
             {panel === 'diagnostics' && (
-              <DiagnosticsPanel metrics={metrics} setMetrics={setMetrics} />
+              <DiagnosticsPanel
+                metrics={metrics}
+                setMetrics={setMetrics}
+                repairStatus={repairStatus}
+                setRepairStatus={setRepairStatus}
+              />
             )}
           </div>
         </div>
@@ -2878,7 +2886,8 @@ function PeerSyncPanel({
   refresh: () => void;
 }): JSX.Element {
   const [label, setLabel] = useState('Laptop');
-  const [endpoint, setEndpoint] = useState('https://device.tailnet.ts.net/appdeck');
+  const [endpoint, setEndpoint] = useState('https://device.tailnet.ts.net/appdeck#shared-secret');
+  const [result, setResult] = useState('');
   const save = async (): Promise<void> => {
     await api.peerSync.upsert({ label, endpoint, enabled: true });
     refresh();
@@ -2905,16 +2914,42 @@ function PeerSyncPanel({
         <div className="mt-2 rounded-md border border-line p-2 text-xs text-muted">
           {status?.discoveryHint}
         </div>
+        {status?.localEndpoint ? (
+          <div className="mt-2 rounded-md border border-line p-2 text-xs text-muted">
+            This device: {status.localEndpoint}
+          </div>
+        ) : null}
       </div>
       {status?.peers.map((peer) => (
         <div
           key={peer.id}
-          className="grid grid-cols-[1fr_auto] gap-2 rounded-md border border-line p-3"
+          className="grid grid-cols-[1fr_auto_auto] gap-2 rounded-md border border-line p-3"
         >
           <div>
             <div className="text-sm font-semibold">{peer.label}</div>
             <div className="truncate text-xs text-muted">{peer.endpoint}</div>
+            {peer.last_seen_at ? (
+              <div className="text-xs text-muted">
+                Last synced {new Date(peer.last_seen_at).toLocaleString()}
+              </div>
+            ) : null}
           </div>
+          <button
+            className="app-button"
+            title="Sync"
+            onClick={() =>
+              void api.peerSync.sync(peer.id).then((sync) => {
+                setResult(
+                  sync.status === 'synced'
+                    ? `Synced ${peer.label}: ${sync.applied} changes.`
+                    : `Sync ${sync.status}: ${sync.error ?? 'No changes.'}`
+                );
+                refresh();
+              })
+            }
+          >
+            Sync
+          </button>
           <button
             className="icon-button"
             title="Delete"
@@ -2924,6 +2959,9 @@ function PeerSyncPanel({
           </button>
         </div>
       ))}
+      {result && (
+        <div className="rounded-md border border-line p-2 text-xs text-muted">{result}</div>
+      )}
     </section>
   );
 }
@@ -3350,31 +3388,85 @@ function ImportPanel({
 
 function DiagnosticsPanel({
   metrics,
-  setMetrics
+  setMetrics,
+  repairStatus,
+  setRepairStatus
 }: {
   metrics: AppMetrics | null;
   setMetrics: (metrics: AppMetrics) => void;
+  repairStatus: RepairStatus | null;
+  setRepairStatus: (status: RepairStatus) => void;
 }): JSX.Element {
+  const [repairResult, setRepairResult] = useState('');
   return (
-    <section className="panel rounded-md p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold">Runtime</div>
-        <button className="app-button" onClick={() => void api.metrics.get().then(setMetrics)}>
-          Refresh
-        </button>
+    <section className="space-y-3">
+      <div className="panel rounded-md p-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Runtime</div>
+          <button className="app-button" onClick={() => void api.metrics.get().then(setMetrics)}>
+            Refresh
+          </button>
+        </div>
+        <div className="mb-3 text-sm">Memory: {metrics ? `${metrics.totalMemoryMB} MB` : '-'}</div>
+        <div className="space-y-1">
+          {metrics?.processes.map((process, index) => (
+            <div
+              key={`${process.type}-${process.name}-${index}`}
+              className="grid grid-cols-[120px_1fr_80px] gap-2 rounded-md border border-line px-2 py-1 text-xs"
+            >
+              <span className="truncate text-muted">{process.type}</span>
+              <span className="truncate">{process.name}</span>
+              <span className="text-right">{process.memoryMB} MB</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="mb-3 text-sm">Memory: {metrics ? `${metrics.totalMemoryMB} MB` : '-'}</div>
-      <div className="space-y-1">
-        {metrics?.processes.map((process, index) => (
-          <div
-            key={`${process.type}-${process.name}-${index}`}
-            className="grid grid-cols-[120px_1fr_80px] gap-2 rounded-md border border-line px-2 py-1 text-xs"
-          >
-            <span className="truncate text-muted">{process.type}</span>
-            <span className="truncate">{process.name}</span>
-            <span className="text-right">{process.memoryMB} MB</span>
+
+      <div className="panel rounded-md p-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Repair</div>
+          <div className="flex gap-2">
+            <button
+              className="app-button"
+              onClick={() => void api.repair.status().then(setRepairStatus)}
+            >
+              Check
+            </button>
+            <button
+              className="app-button primary"
+              onClick={() =>
+                void api.repair.run().then((result) => {
+                  setRepairStatus(result);
+                  setRepairResult(`Fixed ${result.fixed} issues.`);
+                })
+              }
+            >
+              Repair
+            </button>
           </div>
-        ))}
+        </div>
+        <div className="grid gap-2 text-xs lg:grid-cols-4">
+          <Metric label="DB" value={repairStatus?.integrityOk ? 'OK' : 'Check'} />
+          <Metric label="Bad URLs" value={String(repairStatus?.invalidLastUrls.length ?? 0)} />
+          <Metric
+            label="Missing Recipes"
+            value={String(repairStatus?.missingRecipes.length ?? 0)}
+          />
+          <Metric
+            label="Safe Mode"
+            value={repairStatus?.safeModeRecommended ? 'Recommended' : 'Not needed'}
+          />
+        </div>
+        {repairResult && <div className="mt-3 text-xs text-muted">{repairResult}</div>}
+        {repairStatus?.integrityMessages.some((message) => message !== 'ok') ? (
+          <div className="mt-3 space-y-1 text-xs text-muted">
+            {repairStatus.integrityMessages.map((message) => (
+              <div key={message} className="rounded-md border border-line p-2">
+                {message}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

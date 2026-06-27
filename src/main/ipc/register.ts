@@ -114,6 +114,7 @@ import {
 } from '../db/repositories/workspaceSnapshots.js';
 import {
   deletePeerSyncPeer,
+  getPeerSyncPeer,
   listPeerSyncPeers,
   upsertPeerSyncPeer
 } from '../db/repositories/peerSync.js';
@@ -134,9 +135,11 @@ import {
 import { LinkRouter } from '../services/linkRouter.js';
 import { previewMigration, runMigration } from '../services/migrationWizard.js';
 import { NotificationService } from '../services/notifications.js';
+import { PeerSyncRuntime } from '../services/peerSyncRuntime.js';
 import { buildPersonalAnalytics } from '../services/personalAnalytics.js';
 import { configurePortableMode, portableModeStatus } from '../services/portableMode.js';
-import { analyzeRecipeDraft, createRecipeFromStudio } from '../services/recipeStudio.js';
+import { analyzeRecipeDraftLive, createRecipeFromStudio } from '../services/recipeStudio.js';
+import { buildRepairStatus, runRepair } from '../services/repair.js';
 import { TrackerBlocker } from '../services/trackerBlock.js';
 import { buildTrustStatus } from '../services/trustStatus.js';
 import { UpdaterService } from '../services/updater.js';
@@ -161,6 +164,7 @@ export interface IpcContext {
   linkRouter: LinkRouter;
   trackerBlocker: TrackerBlocker;
   updaterService: UpdaterService;
+  peerSyncRuntime: PeerSyncRuntime;
   sendPush: (channel: string, payload?: unknown) => void;
   sendDataChanged: () => void;
   onSettingsChanged: () => void;
@@ -489,7 +493,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     },
 
     'recipeStudio:analyze': (payload) =>
-      analyzeRecipeDraft(parseIpcPayload('recipeStudio:analyze', payload)),
+      analyzeRecipeDraftLive(parseIpcPayload('recipeStudio:analyze', payload)),
     'recipeStudio:create': (payload) => {
       const recipe = createRecipeFromStudio(
         ctx.db,
@@ -550,6 +554,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'analytics:personal': () => buildPersonalAnalytics(ctx.db, ctx.trackerBlocker.stats()),
 
+    'repair:status': () => buildRepairStatus(ctx.db, ctx.recipeLoader),
+    'repair:run': () => {
+      const result = runRepair(ctx.db, ctx.deviceId, ctx.recipeLoader);
+      ctx.sendDataChanged();
+      return result;
+    },
+
     'portable:status': () => portableModeStatus(ctx.db),
     'portable:configure': (payload) => {
       const input = parseIpcPayload('portable:configure', payload);
@@ -561,13 +572,22 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     'peerSync:status': () => ({
       deviceId: ctx.deviceId,
       peers: listPeerSyncPeers(ctx.db),
+      localEndpoint: ctx.peerSyncRuntime.localEndpoint(),
       discoveryHint:
-        'Use a Tailscale/LAN URL, shared folder, or future AppDeck peer endpoint. Secrets never leave this device through peer metadata.'
+        'Use the local endpoint from the other device. Keep the #secret fragment private; it encrypts the peer vault payload.'
     }),
     'peerSync:upsert': (payload) => {
       const peer = upsertPeerSyncPeer(ctx.db, parseIpcPayload('peerSync:upsert', payload));
       ctx.sendDataChanged();
       return peer;
+    },
+    'peerSync:sync': async (payload) => {
+      const input = parseIpcPayload('peerSync:sync', payload);
+      const peer = getPeerSyncPeer(ctx.db, input.id);
+      if (!peer) throw new Error('Peer not found');
+      const result = await ctx.peerSyncRuntime.sync(peer);
+      ctx.sendDataChanged();
+      return result;
     },
     'peerSync:delete': (payload) => {
       deletePeerSyncPeer(ctx.db, parseIpcPayload('peerSync:delete', payload).id);

@@ -16,6 +16,7 @@ import { permissionDecision } from '../db/repositories/permissionPolicies.js';
 import { testFirewallRules } from '../db/repositories/privacyFirewall.js';
 import { RecipeLoader } from '../recipes/loader.js';
 import type { ExtensionManager } from '../services/extensionManager.js';
+import { extensionRuntimeForDb } from '../services/extensionPack.js';
 import type { TrackerBlocker } from '../services/trackerBlock.js';
 import { normalizeRect } from './viewBounds.js';
 
@@ -499,6 +500,13 @@ export class ServiceViewManager {
     const instance = getServiceInstance(this.db, managed.instanceId);
     if (!instance) {
       return;
+    }
+    const extensionRuntime = extensionRuntimeForDb(this.db);
+    if (extensionRuntime.css) {
+      void managed.view.webContents.insertCSS(extensionRuntime.css);
+    }
+    if (extensionRuntime.js) {
+      void managed.view.webContents.executeJavaScript(extensionRuntime.js, true);
     }
     if (instance.custom_css) {
       void managed.view.webContents.insertCSS(instance.custom_css);

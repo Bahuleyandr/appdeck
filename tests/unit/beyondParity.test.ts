@@ -12,10 +12,15 @@ import {
 import { listDashboards } from '../../src/main/db/repositories/dashboards.js';
 import { listLinkRules } from '../../src/main/db/repositories/linkRules.js';
 import { listWorkKits } from '../../src/main/db/repositories/workKits.js';
+import {
+  applyLocalExtensionTemplate,
+  extensionRuntimeForDb
+} from '../../src/main/services/extensionPack.js';
 import { applyWorkKit } from '../../src/main/services/workKitApply.js';
 import { previewBrowserImport } from '../../src/main/services/browserImport.js';
 import {
   analyzeRecipeDraft,
+  analyzeRecipeDraftLive,
   createRecipeFromStudio
 } from '../../src/main/services/recipeStudio.js';
 import { RecipeLoader } from '../../src/main/recipes/loader.js';
@@ -75,6 +80,44 @@ describe('beyond-parity foundations', () => {
       category: 'Dev'
     });
     expect(recipe.allowed_domains).toContain('tool.example.com');
+  });
+
+  it('detects recipe metadata from a live page sample', async () => {
+    const html = `
+      <html>
+        <head>
+          <title>Acme Inbox</title>
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <link rel="icon" href="/favicon.ico">
+          <link rel="manifest" href="https://app.example.com/manifest.webmanifest">
+        </head>
+        <body>
+          <a href="https://accounts.example.com/login">Login</a>
+          <span class="unread-count">12</span>
+          <script>Notification.requestPermission(); navigator.serviceWorker.register('/sw.js');</script>
+        </body>
+      </html>
+    `;
+    const analysis = await analyzeRecipeDraftLive(
+      {
+        name: 'Acme',
+        url: 'https://app.example.com/inbox',
+        category: 'Productivity'
+      },
+      async () =>
+        new Response(html, {
+          headers: { 'content-type': 'text/html' }
+        })
+    );
+
+    expect(analysis.recipe.name).toBe('Acme Inbox');
+    expect(analysis.recipe.icon).toBe('https://app.example.com/favicon.ico');
+    expect(analysis.recipe.allowed_domains).toEqual(
+      expect.arrayContaining(['app.example.com', 'accounts.example.com'])
+    );
+    expect(analysis.recipe.mobile_mode).toBe(true);
+    expect(analysis.recipe.unread_spec?.selector).toBe('.unread-count');
+    expect(analysis.suggestions.join(' ')).toContain('notifications');
   });
 
   it('tests privacy firewall rules and seeds work kits', () => {
@@ -144,5 +187,17 @@ describe('beyond-parity foundations', () => {
         ruleType: 'cookie'
       }).action
     ).toBe('block');
+  });
+
+  it('turns built-in extension packs into runtime CSS and JS', () => {
+    const { db } = createTestDb();
+    applyLocalExtensionTemplate(db, 'dark-mode');
+    applyLocalExtensionTemplate(db, 'reader-mode');
+    applyLocalExtensionTemplate(db, 'cookie-tools');
+
+    const runtime = extensionRuntimeForDb(db);
+    expect(runtime.css).toContain('color-scheme: dark');
+    expect(runtime.js).toContain('__appdeckReaderMode');
+    expect(runtime.js).toContain('__appdeckClearStorage');
   });
 });

@@ -23,6 +23,7 @@ import { BadgeService } from './services/badges.js';
 import { ExtensionManager } from './services/extensionManager.js';
 import { LinkRouter } from './services/linkRouter.js';
 import { NotificationService } from './services/notifications.js';
+import { PeerSyncRuntime } from './services/peerSyncRuntime.js';
 import { SleepManager } from './services/sleepManager.js';
 import { TrackerBlocker } from './services/trackerBlock.js';
 import { UpdaterService } from './services/updater.js';
@@ -37,6 +38,7 @@ let sleepManager: SleepManager | null = null;
 let lockService: AppLockService | null = null;
 let linkRouter: LinkRouter | null = null;
 let automationRuntime: AutomationRuntime | null = null;
+let peerSyncRuntime: PeerSyncRuntime | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let notificationPruneTimer: NodeJS.Timeout | null = null;
@@ -121,6 +123,8 @@ if (!gotLock) {
     const updaterService = new UpdaterService(sendPush);
     updaterService.init();
     linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
+    peerSyncRuntime = new PeerSyncRuntime(db);
+    void peerSyncRuntime.startServer().catch(() => undefined);
     automationRuntime = new AutomationRuntime({
       db,
       viewManager,
@@ -180,6 +184,7 @@ if (!gotLock) {
       linkRouter,
       trackerBlocker,
       updaterService,
+      peerSyncRuntime,
       sendPush,
       sendDataChanged: () => {
         sendPush('event:data-changed');
@@ -245,6 +250,8 @@ if (!gotLock) {
       sleepManager?.stop();
       automationRuntime?.dispose();
       automationRuntime = null;
+      peerSyncRuntime?.dispose();
+      peerSyncRuntime = null;
       if (notificationPruneTimer) {
         clearInterval(notificationPruneTimer);
         notificationPruneTimer = null;
