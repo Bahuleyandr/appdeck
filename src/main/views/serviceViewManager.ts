@@ -13,6 +13,7 @@ import { getServiceInstance, setServiceLastUrl } from '../db/repositories/servic
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
 import { upsertDownload } from '../db/repositories/downloads.js';
 import { permissionDecision } from '../db/repositories/permissionPolicies.js';
+import { testFirewallRules } from '../db/repositories/privacyFirewall.js';
 import { RecipeLoader } from '../recipes/loader.js';
 import type { ExtensionManager } from '../services/extensionManager.js';
 import type { TrackerBlocker } from '../services/trackerBlock.js';
@@ -334,16 +335,71 @@ export class ServiceViewManager {
   private configureSession(partition: Session, instance: ServiceInstance): void {
     void partition.setProxy(proxyConfig(instance.proxy)).catch(() => undefined);
     partition.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const firewall = testFirewallRules(this.db, permission, instance.id, {
+        ruleType: 'permission',
+        permission
+      });
+      if (firewall.matched) {
+        callback(firewall.action === 'allow');
+        return;
+      }
       callback(resolvePermissionDecision(permissionDecision(this.db, instance.id, permission)));
     });
     partition.setPermissionCheckHandler((_webContents, permission) => {
+      const firewall = testFirewallRules(this.db, permission, instance.id, {
+        ruleType: 'permission',
+        permission
+      });
+      if (firewall.matched) {
+        return firewall.action === 'allow';
+      }
       return resolvePermissionDecision(permissionDecision(this.db, instance.id, permission));
     });
     if (this.configuredSessions.has(partition)) {
       return;
     }
     this.configuredSessions.add(partition);
+    partition.webRequest.onBeforeRequest((details, callback) => {
+      const script = testFirewallRules(this.db, details.url, instance.id, {
+        ruleType: 'script',
+        resourceType: details.resourceType
+      });
+      if (script.matched && script.action !== 'allow') {
+        callback({ cancel: true });
+        return;
+      }
+      const domain = testFirewallRules(this.db, details.url, instance.id, {
+        ruleType: 'domain',
+        resourceType: details.resourceType
+      });
+      callback({ cancel: domain.matched && domain.action !== 'allow' });
+    });
+    partition.webRequest.onBeforeSendHeaders((details, callback) => {
+      const cookie = testFirewallRules(this.db, details.url, instance.id, { ruleType: 'cookie' });
+      if (cookie.matched && cookie.action !== 'allow') {
+        callback({ requestHeaders: withoutHeaders(details.requestHeaders, ['cookie']) });
+        return;
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    });
+    partition.webRequest.onHeadersReceived((details, callback) => {
+      const cookie = testFirewallRules(this.db, details.url, instance.id, { ruleType: 'cookie' });
+      if (cookie.matched && cookie.action !== 'allow') {
+        callback({
+          responseHeaders: withoutHeaders(details.responseHeaders ?? {}, ['set-cookie'])
+        });
+        return;
+      }
+      callback({ responseHeaders: details.responseHeaders });
+    });
     partition.on('will-download', (_event, item) => {
+      const download = testFirewallRules(this.db, item.getURL(), instance.id, {
+        ruleType: 'download'
+      });
+      if (download.matched && download.action !== 'allow') {
+        item.cancel();
+        return;
+      }
       const id = crypto.randomUUID();
       const startedAt = Date.now();
       const savePath = item.getSavePath();
@@ -519,6 +575,16 @@ async function openExternalSafe(value: string): Promise<void> {
   } catch {
     // Ignore malformed or blocked URLs.
   }
+}
+
+function withoutHeaders<T extends Record<string, string | string[]>>(
+  headers: T,
+  names: string[]
+): T {
+  const remove = new Set(names.map((name) => name.toLowerCase()));
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !remove.has(name.toLowerCase()))
+  ) as T;
 }
 
 function proxyConfig(proxy: ServiceProxy | null): Electron.ProxyConfig {

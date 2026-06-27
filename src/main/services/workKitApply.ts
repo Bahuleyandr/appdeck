@@ -1,8 +1,11 @@
 import type Database from 'better-sqlite3';
-import type { WorkKit } from '../../shared/types.js';
+import type { AutomationAction, WorkKit } from '../../shared/types.js';
+import { upsertAutomation } from '../db/repositories/automations.js';
 import { createCustomRecipe } from '../db/repositories/customRecipes.js';
+import { upsertDashboard } from '../db/repositories/dashboards.js';
 import { upsertFocusMode } from '../db/repositories/focusModes.js';
 import { upsertAiPrompt } from '../db/repositories/aiPrompts.js';
+import { upsertLinkRule } from '../db/repositories/linkRules.js';
 import { createServiceInstance } from '../db/repositories/serviceInstances.js';
 import { createWorkspace } from '../db/repositories/workspaces.js';
 import { getWorkKit } from '../db/repositories/workKits.js';
@@ -51,7 +54,34 @@ export function applyWorkKit(
       schedule: kit.payload.focusMode.schedule ?? []
     });
   }
+  for (const dashboard of kit.payload.dashboards ?? []) {
+    upsertDashboard(db, {
+      name: dashboard.name,
+      workspace_id: workspace.id,
+      widgets: dashboard.widgets
+    });
+  }
+  for (const rule of kit.payload.linkRules ?? []) {
+    upsertLinkRule(db, {
+      ...rule,
+      target_id:
+        rule.target_id ?? (rule.target_type === 'workspace' ? workspace.id : rule.target_id)
+    });
+  }
+  for (const automation of kit.payload.automations ?? []) {
+    upsertAutomation(db, {
+      ...automation,
+      actions: automation.actions.map((action) => resolveAutomationAction(action, workspace.id))
+    });
+  }
   return { workspaceId: workspace.id, createdServices, kit };
+}
+
+function resolveAutomationAction(action: AutomationAction, workspaceId: string): AutomationAction {
+  return {
+    ...action,
+    targetId: action.targetId === '$workspace' ? workspaceId : action.targetId
+  };
 }
 
 function hostOf(url: string): string | null {

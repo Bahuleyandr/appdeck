@@ -458,7 +458,13 @@ export interface WorkKit {
     services: Array<{ name: string; url: string; category: ServiceCategory }>;
     focusMode?: Partial<FocusMode>;
     aiPrompts?: Array<{ title: string; prompt: string }>;
-    linkRules?: Array<Pick<LinkRule, 'name' | 'match_type' | 'pattern' | 'target_type'>>;
+    linkRules?: Array<
+      Partial<LinkRule> & Pick<LinkRule, 'name' | 'match_type' | 'pattern' | 'target_type'>
+    >;
+    dashboards?: Array<{ name: string; widgets?: DashboardWidget[] }>;
+    automations?: Array<
+      Partial<AutomationRule> & Pick<AutomationRule, 'name' | 'trigger' | 'actions'>
+    >;
   };
   built_in: boolean;
   created_at: number;

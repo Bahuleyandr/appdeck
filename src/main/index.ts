@@ -18,6 +18,7 @@ import { registerIpcHandlers } from './ipc/register.js';
 import { RecipeLoader } from './recipes/loader.js';
 import { AiService } from './services/aiService.js';
 import { AppLockService } from './services/appLock.js';
+import { AutomationRuntime } from './services/automationRuntime.js';
 import { BadgeService } from './services/badges.js';
 import { ExtensionManager } from './services/extensionManager.js';
 import { LinkRouter } from './services/linkRouter.js';
@@ -35,6 +36,7 @@ let viewManager: ServiceViewManager | null = null;
 let sleepManager: SleepManager | null = null;
 let lockService: AppLockService | null = null;
 let linkRouter: LinkRouter | null = null;
+let automationRuntime: AutomationRuntime | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let notificationPruneTimer: NodeJS.Timeout | null = null;
@@ -119,6 +121,17 @@ if (!gotLock) {
     const updaterService = new UpdaterService(sendPush);
     updaterService.init();
     linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
+    automationRuntime = new AutomationRuntime({
+      db,
+      viewManager,
+      sendPush,
+      sendDataChanged: () => {
+        sendPush('event:data-changed');
+        fileSyncService.scheduleSync();
+        cloudSyncService.scheduleSync();
+      }
+    });
+    automationRuntime.start();
 
     pruneOldNotifications(db);
     notificationPruneTimer = setInterval(
@@ -158,6 +171,7 @@ if (!gotLock) {
       recipeLoader,
       viewManager,
       notificationService,
+      automationRuntime,
       badgeService,
       lockService,
       fileSyncService,
@@ -229,6 +243,8 @@ if (!gotLock) {
     app.on('before-quit', () => {
       isQuitting = true;
       sleepManager?.stop();
+      automationRuntime?.dispose();
+      automationRuntime = null;
       if (notificationPruneTimer) {
         clearInterval(notificationPruneTimer);
         notificationPruneTimer = null;

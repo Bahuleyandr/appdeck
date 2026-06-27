@@ -9,7 +9,10 @@ import {
   testFirewallRules,
   upsertFirewallRule
 } from '../../src/main/db/repositories/privacyFirewall.js';
+import { listDashboards } from '../../src/main/db/repositories/dashboards.js';
+import { listLinkRules } from '../../src/main/db/repositories/linkRules.js';
 import { listWorkKits } from '../../src/main/db/repositories/workKits.js';
+import { applyWorkKit } from '../../src/main/services/workKitApply.js';
 import { previewBrowserImport } from '../../src/main/services/browserImport.js';
 import {
   analyzeRecipeDraft,
@@ -84,5 +87,62 @@ describe('beyond-parity foundations', () => {
 
     expect(testFirewallRules(db, 'https://tracker.example.com/pixel.gif').action).toBe('block');
     expect(listWorkKits(db).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('seeds productized work kits with supporting recipes', () => {
+    const { db, deviceId } = createTestDb();
+    const kits = listWorkKits(db);
+    expect(kits.map((kit) => kit.name)).toEqual(
+      expect.arrayContaining(['Founder', 'Developer', 'Student', 'Agency', 'Researcher', 'Creator'])
+    );
+    const developer = kits.find((kit) => kit.id === 'kit-developer');
+    expect(developer?.payload.dashboards?.length).toBeGreaterThan(0);
+    expect(developer?.payload.linkRules?.length).toBeGreaterThan(0);
+    expect(developer?.payload.automations?.length).toBeGreaterThan(0);
+
+    const result = applyWorkKit(db, deviceId, 'kit-developer');
+    expect(result.createdServices).toBeGreaterThan(0);
+    expect(listDashboards(db, result.workspaceId).length).toBeGreaterThan(0);
+    expect(listLinkRules(db).length).toBeGreaterThan(0);
+    expect(listAutomations(db).length).toBeGreaterThan(0);
+  });
+
+  it('matches privacy firewall rules by request type and service scope', () => {
+    const { db } = createTestDb();
+    upsertFirewallRule(db, {
+      service_instance_id: 'svc-1',
+      rule_type: 'script',
+      pattern: 'analytics.js',
+      action: 'block'
+    });
+    upsertFirewallRule(db, {
+      rule_type: 'cookie',
+      pattern: 'tracker.example.com',
+      action: 'block'
+    });
+
+    expect(
+      testFirewallRules(db, 'https://cdn.example.com/analytics.js', 'svc-1', {
+        ruleType: 'script',
+        resourceType: 'script'
+      }).action
+    ).toBe('block');
+    expect(
+      testFirewallRules(db, 'https://cdn.example.com/analytics.js', 'svc-1', {
+        ruleType: 'script',
+        resourceType: 'image'
+      }).action
+    ).toBe('allow');
+    expect(
+      testFirewallRules(db, 'https://cdn.example.com/analytics.js', 'svc-2', {
+        ruleType: 'script',
+        resourceType: 'script'
+      }).action
+    ).toBe('allow');
+    expect(
+      testFirewallRules(db, 'https://tracker.example.com/pixel.gif', 'svc-2', {
+        ruleType: 'cookie'
+      }).action
+    ).toBe('block');
   });
 });

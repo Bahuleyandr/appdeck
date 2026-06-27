@@ -121,6 +121,7 @@ import { listWorkKits } from '../db/repositories/workKits.js';
 import { getAllSettings, setSetting } from '../db/repositories/settings.js';
 import { AppLockService } from '../services/appLock.js';
 import { AiService } from '../services/aiService.js';
+import { AutomationRuntime } from '../services/automationRuntime.js';
 import { BadgeService } from '../services/badges.js';
 import { previewBrowserImport, runBrowserImport } from '../services/browserImport.js';
 import { collectMetrics, collectPerformanceStatus } from '../services/metrics.js';
@@ -151,6 +152,7 @@ export interface IpcContext {
   recipeLoader: RecipeLoader;
   viewManager: ServiceViewManager;
   notificationService: NotificationService;
+  automationRuntime: AutomationRuntime;
   badgeService: BadgeService;
   lockService: AppLockService;
   fileSyncService: FileSyncService;
@@ -648,11 +650,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       const input = parseIpcPayload('notify:incoming', payload);
       const record = insertNotification(ctx.db, input);
       ctx.notificationService.show(input);
+      ctx.automationRuntime.handleNotification(input);
       ctx.sendPush('event:notification', { record, unread: unreadNotificationCount(ctx.db) });
     },
     'unread:report': (payload) => {
       const input = parseIpcPayload('unread:report', payload);
       ctx.badgeService.setCount(input.instanceId, input.count);
+      ctx.automationRuntime.handleUnread(input);
       ctx.sendPush('event:unread', input);
     },
 

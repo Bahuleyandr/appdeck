@@ -17,6 +17,14 @@ function mapRule(row: FirewallRow): PrivacyFirewallRule {
   return { ...row, enabled: toBool(row.enabled) };
 }
 
+export interface FirewallMatchInput {
+  url?: string;
+  serviceInstanceId?: string | null;
+  ruleType?: PrivacyFirewallRule['rule_type'];
+  resourceType?: string;
+  permission?: string;
+}
+
 export function listFirewallRules(db: Database.Database): PrivacyFirewallRule[] {
   return (
     db
@@ -74,27 +82,68 @@ export function deleteFirewallRule(db: Database.Database, id: string): void {
 export function testFirewallRules(
   db: Database.Database,
   url: string,
-  serviceInstanceId?: string | null
+  serviceInstanceId?: string | null,
+  input: Omit<FirewallMatchInput, 'url' | 'serviceInstanceId'> = {}
 ): PrivacyFirewallTestResult {
-  const rules = listFirewallRules(db).filter(
-    (rule) =>
-      rule.enabled &&
-      (!rule.service_instance_id ||
-        !serviceInstanceId ||
-        rule.service_instance_id === serviceInstanceId)
-  );
-  const target = new URL(url);
-  const matched =
-    rules.find((rule) => {
-      const pattern = rule.pattern.toLowerCase();
-      if (rule.rule_type === 'domain') {
-        return target.hostname.toLowerCase().includes(pattern);
-      }
-      return url.toLowerCase().includes(pattern);
-    }) ?? null;
+  const matched = matchFirewallRule(listFirewallRules(db), {
+    ...input,
+    url,
+    serviceInstanceId
+  });
   return {
     matched: Boolean(matched),
     action: matched?.action ?? 'allow',
     rule: matched
   };
+}
+
+export function matchFirewallRule(
+  rules: PrivacyFirewallRule[],
+  input: FirewallMatchInput
+): PrivacyFirewallRule | null {
+  return (
+    rules.find((rule) => {
+      if (!rule.enabled) return false;
+      if (rule.service_instance_id && rule.service_instance_id !== input.serviceInstanceId) {
+        return false;
+      }
+      if (input.ruleType && rule.rule_type !== input.ruleType && rule.rule_type !== 'domain') {
+        return false;
+      }
+      return ruleMatches(rule, input);
+    }) ?? null
+  );
+}
+
+function ruleMatches(rule: PrivacyFirewallRule, input: FirewallMatchInput): boolean {
+  const pattern = rule.pattern.trim().toLowerCase();
+  if (!pattern) return false;
+  if (pattern === '*') return true;
+  if (rule.rule_type === 'permission') {
+    return (input.permission ?? '').toLowerCase().includes(pattern);
+  }
+  if (rule.rule_type === 'script' && input.resourceType && input.resourceType !== 'script') {
+    return false;
+  }
+  if (rule.rule_type === 'clipboard' || rule.rule_type === 'download') {
+    return valueMatches(input.url ?? input.permission ?? '', pattern);
+  }
+  if (rule.rule_type === 'domain') {
+    return hostMatches(input.url, pattern);
+  }
+  return valueMatches(input.url ?? '', pattern);
+}
+
+function hostMatches(url: string | undefined, pattern: string): boolean {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === pattern || hostname.endsWith(`.${pattern}`) || hostname.includes(pattern);
+  } catch {
+    return false;
+  }
+}
+
+function valueMatches(value: string, pattern: string): boolean {
+  return value.toLowerCase().includes(pattern);
 }

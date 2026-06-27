@@ -30,9 +30,15 @@ function mapWorkKit(row: WorkKitRow): WorkKit {
 export function seedWorkKits(db: Database.Database): void {
   const now = Date.now();
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO work_kits
+    `INSERT INTO work_kits
       (id, name, description, payload_json, built_in, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?)`
+     VALUES (?, ?, ?, ?, 1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       description = excluded.description,
+       payload_json = excluded.payload_json,
+       built_in = excluded.built_in,
+       updated_at = excluded.updated_at`
   );
   db.transaction(() => {
     for (const kit of builtInKits()) {
@@ -56,6 +62,17 @@ export function getWorkKit(db: Database.Database, id: string): WorkKit | null {
 
 function builtInKits(): WorkKit[] {
   const now = Date.now();
+  const widgets = [
+    { id: 'unread', type: 'unread' as const, title: 'Unread', config: {} },
+    { id: 'tasks', type: 'tasks' as const, title: 'Tasks', config: { limit: 8 } },
+    {
+      id: 'notifications',
+      type: 'notifications' as const,
+      title: 'Recent',
+      config: { limit: 8 }
+    },
+    { id: 'notes', type: 'notes' as const, title: 'Notes', config: {} }
+  ];
   return [
     {
       id: 'kit-founder',
@@ -76,6 +93,23 @@ function builtInKits(): WorkKit[] {
             title: 'Founder Catch-Up',
             prompt:
               'Summarize urgent customer, revenue, hiring, and investor items from this context.'
+          }
+        ],
+        focusMode: { name: 'Founder Focus', settings: { muteNotifications: true } },
+        dashboards: [{ name: 'Founder Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'Revenue to Founder OS',
+            match_type: 'domain',
+            pattern: 'stripe.com',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Urgent customer follow-up',
+            trigger: { type: 'notification', matchText: 'urgent' },
+            actions: [{ type: 'createTask', value: 'Follow up on urgent customer item' }]
           }
         ]
       },
@@ -103,6 +137,28 @@ function builtInKits(): WorkKit[] {
             prompt:
               'Extract symptoms, likely owner, severity, and next debugging command from this context.'
           }
+        ],
+        focusMode: { name: 'Maker Mode', settings: { muteNotifications: true } },
+        dashboards: [{ name: 'Developer Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'GitHub to Developer Desk',
+            match_type: 'domain',
+            pattern: 'github.com',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Incident notification to task',
+            trigger: { type: 'notification', matchText: 'incident' },
+            actions: [{ type: 'createTask', value: 'Triage incident notification' }]
+          },
+          {
+            name: 'High unread developer focus',
+            trigger: { type: 'unreadThreshold', unreadAtLeast: 10 },
+            actions: [{ type: 'openWorkspace', targetId: '$workspace' }]
+          }
         ]
       },
       built_in: true,
@@ -126,7 +182,152 @@ function builtInKits(): WorkKit[] {
           { name: 'Perplexity', url: 'https://www.perplexity.ai', category: 'AI' },
           { name: 'YouTube', url: 'https://www.youtube.com', category: 'Media' }
         ],
-        focusMode: { name: 'Study Block', settings: { muteNotifications: true } }
+        focusMode: { name: 'Study Block', settings: { muteNotifications: true } },
+        dashboards: [{ name: 'Study Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'Classroom to Study Hub',
+            match_type: 'domain',
+            pattern: 'classroom.google.com',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Assignment notification to task',
+            trigger: { type: 'notification', matchText: 'assignment' },
+            actions: [{ type: 'createTask', value: 'Review new assignment' }]
+          }
+        ]
+      },
+      built_in: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: 'kit-agency',
+      name: 'Agency',
+      description: 'Client inboxes, delivery boards, analytics, design review, and approvals.',
+      payload: {
+        workspaceName: 'Agency Studio',
+        services: [
+          { name: 'Gmail', url: 'https://mail.google.com', category: 'Email' },
+          { name: 'Slack', url: 'https://app.slack.com', category: 'Chat' },
+          { name: 'Asana', url: 'https://app.asana.com', category: 'Productivity' },
+          { name: 'Figma', url: 'https://www.figma.com/files', category: 'Productivity' },
+          {
+            name: 'Google Analytics',
+            url: 'https://analytics.google.com',
+            category: 'Productivity'
+          },
+          { name: 'Canva', url: 'https://www.canva.com', category: 'Productivity' }
+        ],
+        aiPrompts: [
+          {
+            title: 'Client Status Brief',
+            prompt: 'Create a short client-ready status brief from notifications, tasks, and notes.'
+          }
+        ],
+        focusMode: { name: 'Client Delivery', settings: { muteNotifications: false } },
+        dashboards: [{ name: 'Agency Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'Figma to Agency Studio',
+            match_type: 'domain',
+            pattern: 'figma.com',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Approval request to task',
+            trigger: { type: 'notification', matchText: 'approval' },
+            actions: [{ type: 'createTask', value: 'Handle client approval request' }]
+          }
+        ]
+      },
+      built_in: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: 'kit-researcher',
+      name: 'Researcher',
+      description: 'Papers, notes, citations, AI synthesis, datasets, and deep-work rhythm.',
+      payload: {
+        workspaceName: 'Research Lab',
+        services: [
+          { name: 'Google Scholar', url: 'https://scholar.google.com', category: 'Productivity' },
+          { name: 'Zotero', url: 'https://www.zotero.org', category: 'Productivity' },
+          { name: 'Notion', url: 'https://www.notion.so', category: 'Productivity' },
+          { name: 'Perplexity', url: 'https://www.perplexity.ai', category: 'AI' },
+          { name: 'arXiv', url: 'https://arxiv.org', category: 'Productivity' }
+        ],
+        aiPrompts: [
+          {
+            title: 'Research Synthesis',
+            prompt: 'Synthesize claims, evidence, contradictions, and follow-up questions.'
+          }
+        ],
+        focusMode: { name: 'Reading Block', settings: { muteNotifications: true } },
+        dashboards: [{ name: 'Research Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'Papers to Research Lab',
+            match_type: 'domain',
+            pattern: 'arxiv.org',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Paper mention to task',
+            trigger: { type: 'notification', matchText: 'paper' },
+            actions: [{ type: 'createTask', value: 'Review mentioned paper' }]
+          }
+        ]
+      },
+      built_in: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: 'kit-creator',
+      name: 'Creator',
+      description: 'Content planning, publishing, audience messages, analytics, and creative flow.',
+      payload: {
+        workspaceName: 'Creator Desk',
+        services: [
+          { name: 'YouTube Studio', url: 'https://studio.youtube.com', category: 'Media' },
+          { name: 'Instagram', url: 'https://www.instagram.com', category: 'Social' },
+          { name: 'X', url: 'https://x.com', category: 'Social' },
+          { name: 'Canva', url: 'https://www.canva.com', category: 'Productivity' },
+          { name: 'Notion', url: 'https://www.notion.so', category: 'Productivity' },
+          { name: 'ChatGPT', url: 'https://chatgpt.com', category: 'AI' }
+        ],
+        aiPrompts: [
+          {
+            title: 'Content Repurposer',
+            prompt: 'Turn the selected context into short post ideas, hooks, and next actions.'
+          }
+        ],
+        focusMode: { name: 'Creation Sprint', settings: { muteNotifications: true } },
+        dashboards: [{ name: 'Creator Dashboard', widgets }],
+        linkRules: [
+          {
+            name: 'YouTube Studio to Creator Desk',
+            match_type: 'domain',
+            pattern: 'studio.youtube.com',
+            target_type: 'workspace'
+          }
+        ],
+        automations: [
+          {
+            name: 'Sponsor mention to task',
+            trigger: { type: 'notification', matchText: 'sponsor' },
+            actions: [{ type: 'createTask', value: 'Review sponsor opportunity' }]
+          }
+        ]
       },
       built_in: true,
       created_at: now,
