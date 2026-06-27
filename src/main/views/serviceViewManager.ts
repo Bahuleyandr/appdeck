@@ -1,6 +1,7 @@
 import { BrowserWindow, WebContentsView, shell, session, type Session } from 'electron';
 import type Database from 'better-sqlite3';
 import { MOBILE_USER_AGENT } from '../../shared/constants.js';
+import { isHttpUrl } from '../../shared/ipc-contract.js';
 import type { Rect, ServiceInstance, ServiceProxy, ServiceState } from '../../shared/types.js';
 import { getServiceInstance, setServiceLastUrl } from '../db/repositories/serviceInstances.js';
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
@@ -147,6 +148,7 @@ export class ServiceViewManager {
   }
 
   navigate(idOrViewId: string, url: string): void {
+    if (!isHttpUrl(url)) return;
     const contents = this.contentsFor(idOrViewId);
     if (contents) void contents.loadURL(url);
   }
@@ -258,7 +260,12 @@ export class ServiceViewManager {
     }
     const tabId = tabIdOf(viewId);
     const tab = tabId ? getTab(this.db, tabId) : null;
-    const startUrl = tab?.url ?? instance.last_url ?? resolved.startUrl;
+    const requestedStartUrl = tab?.url ?? instance.last_url ?? resolved.startUrl;
+    const startUrl = isHttpUrl(requestedStartUrl)
+      ? requestedStartUrl
+      : isHttpUrl(resolved.startUrl)
+        ? resolved.startUrl
+        : null;
     const partition = session.fromPartition(instance.partition_key);
     this.configureSession(partition, instance);
     this.trackerBlocker?.apply(partition);
@@ -292,7 +299,11 @@ export class ServiceViewManager {
     if (instance.zoom_factor) {
       view.webContents.setZoomFactor(instance.zoom_factor);
     }
-    void view.webContents.loadURL(startUrl, userAgent ? { userAgent } : undefined);
+    if (startUrl) {
+      void view.webContents.loadURL(startUrl, userAgent ? { userAgent } : undefined);
+    } else {
+      this.emitState(instance.id, 'crashed');
+    }
     return managed;
   }
 

@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+export function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export const httpUrlSchema = z.string().refine(isHttpUrl, { message: 'URL must be http(s)' });
+
 export const idSchema = z.string().min(1);
 export const optionalStringSchema = z.string().min(1).nullable().optional();
 
@@ -124,7 +135,7 @@ export const servicePatchSchema = z.object({
   custom_js: z.string().nullable().optional(),
   proxy: serviceProxySchema.optional(),
   user_agent: z.string().nullable().optional(),
-  last_url: z.string().nullable().optional(),
+  last_url: httpUrlSchema.nullable().optional(),
   zoom_factor: z.number().positive().nullable().optional(),
   spellcheck: z.boolean().optional()
 });
@@ -132,7 +143,7 @@ export const servicePatchSchema = z.object({
 export const customRecipePatchSchema = z.object({
   name: z.string().min(1).optional(),
   category: serviceCategorySchema.optional(),
-  start_url: z.string().url().optional(),
+  start_url: httpUrlSchema.optional(),
   allowed_domains: z.array(z.string().min(1)).optional(),
   icon_path: z.string().nullable().optional(),
   default_user_agent: z.string().nullable().optional(),
@@ -182,7 +193,7 @@ export const ipcSchemas = {
   'service:reload': z.object({ id: idSchema }),
   'service:navigateBack': z.object({ id: idSchema }),
   'service:navigateForward': z.object({ id: idSchema }),
-  'service:navigate': z.object({ id: idSchema, url: z.string().url() }),
+  'service:navigate': z.object({ id: idSchema, url: httpUrlSchema }),
   'service:sleep': z.object({ id: idSchema }),
   'service:wake': z.object({ id: idSchema }),
   'service:openExternal': z.object({ id: idSchema }),
@@ -199,7 +210,7 @@ export const ipcSchemas = {
   'view:focus': z.object({ instanceId: idSchema }),
 
   'tab:list': z.object({ instanceId: idSchema }),
-  'tab:create': z.object({ instanceId: idSchema, url: z.string().url().optional() }),
+  'tab:create': z.object({ instanceId: idSchema, url: httpUrlSchema.optional() }),
   'tab:close': z.object({ id: idSchema }),
   'tab:setActive': z.object({ instanceId: idSchema, id: idSchema }),
 
@@ -207,7 +218,7 @@ export const ipcSchemas = {
   'recipe:createCustom': z.object({
     name: z.string().min(1),
     category: serviceCategorySchema,
-    start_url: z.string().url(),
+    start_url: httpUrlSchema,
     allowed_domains: z.array(z.string().min(1)),
     icon_path: z.string().nullable().optional(),
     default_user_agent: z.string().nullable().optional(),
@@ -321,12 +332,12 @@ export const ipcSchemas = {
 
   'recipeStudio:analyze': z.object({
     name: z.string().min(1),
-    url: z.string().url(),
+    url: httpUrlSchema,
     category: serviceCategorySchema.optional()
   }),
   'recipeStudio:create': z.object({
     name: z.string().min(1),
-    url: z.string().url(),
+    url: httpUrlSchema,
     category: serviceCategorySchema,
     aliases: z.array(z.string()).optional(),
     mobileMode: z.boolean().optional()

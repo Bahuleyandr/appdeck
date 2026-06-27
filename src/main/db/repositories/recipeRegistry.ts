@@ -5,6 +5,7 @@ import type {
   RecipeRegistryEntry,
   ServiceCategory
 } from '../../../shared/types.js';
+import { isHttpUrl } from '../../../shared/ipc-contract.js';
 import { generateSeedRegistryEntries } from '../../recipes/registrySeed.js';
 import { parseJson, stringifyJson, toBool } from './json.js';
 
@@ -145,11 +146,12 @@ export function importRecipeRegistryPack(
       const startUrl = stringField(item.start_url ?? item.startUrl ?? item.url);
       const category = categoryField(item.category);
       const domains = arrayField(item.allowed_domains ?? item.allowedDomains);
-      if (!name || !startUrl || !category) {
+      if (!name || !startUrl || !category || !isHttpUrl(startUrl)) {
         skipped += 1;
         continue;
       }
-      const id = stringField(item.id) || `community-${slug(name)}`;
+      const rawId = stringField(item.id);
+      const id = rawId.startsWith('community-') ? rawId : `community-${slug(rawId || name)}`;
       const allowedDomains = domains.length ? domains : domainsFor(startUrl);
       stmt.run(
         id,
@@ -255,14 +257,15 @@ export function validateRecipeRegistryPack(raw: string): RecipePackValidation {
     const category = categoryField(item.category);
     if (!name) issues.push(`Entry ${index + 1}: missing name`);
     if (!startUrl) issues.push(`Entry ${index + 1}: missing URL`);
-    if (startUrl && !isUrl(startUrl)) issues.push(`Entry ${index + 1}: URL is invalid`);
+    if (startUrl && !isHttpUrl(startUrl)) issues.push(`Entry ${index + 1}: URL must be http(s)`);
     if (!category) issues.push(`Entry ${index + 1}: category is invalid`);
-    if (!name || !startUrl || !category || !isUrl(startUrl)) {
+    if (!name || !startUrl || !category || !isHttpUrl(startUrl)) {
       skipped += 1;
       continue;
     }
+    const rawId = stringField(item.id);
     preview.push({
-      id: stringField(item.id) || `community-${slug(name)}`,
+      id: rawId.startsWith('community-') ? rawId : `community-${slug(rawId || name)}`,
       name,
       category,
       start_url: startUrl,
@@ -312,15 +315,6 @@ function domainsFor(url: string): string[] {
     return [host, host.replace(/^www\./, '')];
   } catch {
     return [];
-  }
-}
-
-function isUrl(value: string): boolean {
-  try {
-    new URL(value);
-    return true;
-  } catch {
-    return false;
   }
 }
 
