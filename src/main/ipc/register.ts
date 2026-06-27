@@ -233,6 +233,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
         (candidate) => candidate.id === input.id
       );
       ctx.viewManager.sleep(input.id);
+      ctx.badgeService.clear(input.id);
       tombstoneServiceInstance(ctx.db, ctx.deviceId, input.id);
       deleteTabsForInstance(ctx.db, input.id);
       if (input.wipeData && service) {

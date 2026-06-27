@@ -17,6 +17,16 @@ export class BadgeService {
     return this.apply();
   }
 
+  reconcile(liveInstanceIds: string[]): number {
+    const live = new Set(liveInstanceIds);
+    for (const instanceId of this.counts.keys()) {
+      if (!live.has(instanceId)) {
+        this.counts.delete(instanceId);
+      }
+    }
+    return this.apply();
+  }
+
   totalDirect(): number {
     return [...this.counts.values()].reduce((sum, count) => sum + count.direct, 0);
   }
@@ -26,7 +36,10 @@ export class BadgeService {
     app.setBadgeCount(total);
     const window = this.windowProvider();
     if (window && process.platform === 'win32') {
-      window.setOverlayIcon(total > 0 ? this.overlayIcon() : null, total > 0 ? `${total} unread` : '');
+      window.setOverlayIcon(
+        total > 0 ? this.overlayIcon() : null,
+        total > 0 ? `${total} unread` : ''
+      );
     }
     return total;
   }

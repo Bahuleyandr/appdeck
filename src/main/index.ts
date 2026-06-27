@@ -13,6 +13,7 @@ import { APP_NAME, APP_PROTOCOL, DEFAULT_GLOBAL_HOTKEY } from '../shared/constan
 import { openDatabase } from './db/connection.js';
 import { pruneOldNotifications } from './db/repositories/notifications.js';
 import { getBoolSetting, getSetting } from './db/repositories/settings.js';
+import { listServiceInstances } from './db/repositories/serviceInstances.js';
 import { registerIpcHandlers } from './ipc/register.js';
 import { RecipeLoader } from './recipes/loader.js';
 import { AiService } from './services/aiService.js';
@@ -117,6 +118,7 @@ if (!gotLock) {
     linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
 
     pruneOldNotifications(db);
+    badgeService.reconcile(listServiceInstances(db).map((service) => service.id));
     sleepManager = new SleepManager(db, viewManager);
     sleepManager.start();
 
