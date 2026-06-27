@@ -12,7 +12,11 @@ import { createTestDb } from './helpers.js';
 describe('notifications repo', () => {
   it('inserts, lists, searches, and tracks unread state', () => {
     const { db } = createTestDb();
-    const a = insertNotification(db, { instanceId: 'svc-1', title: 'Hello there', body: 'first message' });
+    const a = insertNotification(db, {
+      instanceId: 'svc-1',
+      title: 'Hello there',
+      body: 'first message'
+    });
     insertNotification(db, { instanceId: 'svc-2', title: 'Standup', body: 'meeting at 10' });
 
     expect(listNotifications(db)).toHaveLength(2);
@@ -26,5 +30,24 @@ describe('notifications repo', () => {
 
     markAllNotificationsRead(db);
     expect(unreadNotificationCount(db)).toBe(0);
+  });
+
+  it('deduplicates repeated notifications from the same service in a short window', () => {
+    const { db } = createTestDb();
+
+    const first = insertNotification(db, {
+      instanceId: 'svc-1',
+      title: 'Deploy finished',
+      body: 'AppDeck is ready'
+    });
+    const second = insertNotification(db, {
+      instanceId: 'svc-1',
+      title: 'Deploy finished',
+      body: 'AppDeck is ready'
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(listNotifications(db)).toHaveLength(1);
+    expect(unreadNotificationCount(db)).toBe(1);
   });
 });

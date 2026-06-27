@@ -37,6 +37,9 @@ let lockService: AppLockService | null = null;
 let linkRouter: LinkRouter | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let notificationPruneTimer: NodeJS.Timeout | null = null;
+
+const NOTIFICATION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 app.setAsDefaultProtocolClient(APP_PROTOCOL);
 
@@ -118,6 +121,11 @@ if (!gotLock) {
     linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
 
     pruneOldNotifications(db);
+    notificationPruneTimer = setInterval(
+      () => pruneOldNotifications(db),
+      NOTIFICATION_PRUNE_INTERVAL_MS
+    );
+    notificationPruneTimer.unref();
     badgeService.reconcile(listServiceInstances(db).map((service) => service.id));
     sleepManager = new SleepManager(db, viewManager);
     sleepManager.start();
@@ -221,6 +229,10 @@ if (!gotLock) {
     app.on('before-quit', () => {
       isQuitting = true;
       sleepManager?.stop();
+      if (notificationPruneTimer) {
+        clearInterval(notificationPruneTimer);
+        notificationPruneTimer = null;
+      }
       fileSyncService.dispose();
       cloudSyncService.dispose();
       globalShortcut.unregisterAll();
