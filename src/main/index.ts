@@ -1,4 +1,13 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  powerMonitor,
+  Tray
+} from 'electron';
 import { join } from 'node:path';
 import { APP_NAME, APP_PROTOCOL, DEFAULT_GLOBAL_HOTKEY } from '../shared/constants.js';
 import { openDatabase } from './db/connection.js';
@@ -78,6 +87,7 @@ if (!gotLock) {
       viewManager?.hideAll();
       sendPush('event:locked');
     });
+    lockService.setIdleTimeoutMinutes(getSetting(db, 'auto_lock_minutes'));
 
     viewManager = new ServiceViewManager(
       db,
@@ -154,6 +164,7 @@ if (!gotLock) {
       },
       onSettingsChanged: () => {
         trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
+        lockService?.setIdleTimeoutMinutes(getSetting(db, 'auto_lock_minutes'));
         registerHotkey();
       }
     });

@@ -12,7 +12,7 @@ test('launches the AppDeck shell', async () => {
   });
   try {
     const window = await app.firstWindow();
-    await expect(window.locator('text=Services')).toBeVisible();
+    await expect(window.getByText('Services', { exact: true })).toBeVisible();
     await expect(window.locator('button[title="Add service"]').first()).toBeVisible();
   } finally {
     await app.close();

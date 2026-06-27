@@ -1,9 +1,11 @@
-import { BrowserWindow, WebContentsView, shell, session } from 'electron';
+import { BrowserWindow, WebContentsView, shell, session, type Session } from 'electron';
 import type Database from 'better-sqlite3';
 import { MOBILE_USER_AGENT } from '../../shared/constants.js';
-import type { Rect, ServiceInstance, ServiceState } from '../../shared/types.js';
+import type { Rect, ServiceInstance, ServiceProxy, ServiceState } from '../../shared/types.js';
 import { getServiceInstance, setServiceLastUrl } from '../db/repositories/serviceInstances.js';
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
+import { upsertDownload } from '../db/repositories/downloads.js';
+import { permissionDecision } from '../db/repositories/permissionPolicies.js';
 import { RecipeLoader } from '../recipes/loader.js';
 import type { ExtensionManager } from '../services/extensionManager.js';
 import type { TrackerBlocker } from '../services/trackerBlock.js';
@@ -72,6 +74,7 @@ interface ManagedView {
 export class ServiceViewManager {
   // Keyed by viewId = `${instanceId}#${tabId}`. All tabs of an instance share its partition.
   private readonly views = new Map<string, ManagedView>();
+  private readonly configuredSessions = new WeakSet<Session>();
   private activeInstanceId: string | null = null;
   private visibleIds = new Set<string>();
 
@@ -148,6 +151,28 @@ export class ServiceViewManager {
     if (contents) void contents.loadURL(url);
   }
 
+  currentUrl(idOrViewId: string): string | null {
+    return this.contentsFor(idOrViewId)?.getURL() ?? null;
+  }
+
+  openExternal(idOrViewId: string): void {
+    const url = this.currentUrl(idOrViewId);
+    if (url) void openExternalSafe(url);
+  }
+
+  setZoom(idOrViewId: string, zoomFactor: number): void {
+    this.contentsFor(idOrViewId)?.setZoomFactor(zoomFactor);
+  }
+
+  find(idOrViewId: string, text: string, forward = true): void {
+    if (!text.trim()) return;
+    this.contentsFor(idOrViewId)?.findInPage(text, { forward });
+  }
+
+  stopFind(idOrViewId: string): void {
+    this.contentsFor(idOrViewId)?.stopFindInPage('clearSelection');
+  }
+
   /** Sleep destroys every tab view of the instance; the session lives on in the partition. */
   sleep(instanceId: string): void {
     for (const viewId of [...this.views.keys()]) {
@@ -170,7 +195,9 @@ export class ServiceViewManager {
   }
 
   isAudible(instanceId: string): boolean {
-    return this.viewsForInstance(instanceId).some((managed) => managed.view.webContents.isCurrentlyAudible());
+    return this.viewsForInstance(instanceId).some((managed) =>
+      managed.view.webContents.isCurrentlyAudible()
+    );
   }
 
   isFocused(instanceId: string): boolean {
@@ -178,7 +205,10 @@ export class ServiceViewManager {
   }
 
   getLastActiveAt(instanceId: string): number {
-    return this.viewsForInstance(instanceId).reduce((max, managed) => Math.max(max, managed.lastActiveAt), 0);
+    return this.viewsForInstance(instanceId).reduce(
+      (max, managed) => Math.max(max, managed.lastActiveAt),
+      0
+    );
   }
 
   markActive(viewId: string): void {
@@ -230,12 +260,9 @@ export class ServiceViewManager {
     const tab = tabId ? getTab(this.db, tabId) : null;
     const startUrl = tab?.url ?? instance.last_url ?? resolved.startUrl;
     const partition = session.fromPartition(instance.partition_key);
+    this.configureSession(partition, instance);
     this.trackerBlocker?.apply(partition);
     void this.extensionManager?.applyTo(partition);
-    partition.setPermissionRequestHandler((_webContents, permission, callback) => {
-      // Notifications are surfaced via the inbox; media (mic/cam) is allowed so calls work.
-      callback(permission === 'notifications' || permission === 'media');
-    });
     const view = new WebContentsView({
       webPreferences: {
         partition: instance.partition_key,
@@ -244,7 +271,7 @@ export class ServiceViewManager {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        spellcheck: true
+        spellcheck: instance.spellcheck
       }
     });
     const managed: ManagedView = {
@@ -257,12 +284,88 @@ export class ServiceViewManager {
     };
     this.views.set(viewId, managed);
     this.configureWebContents(instance, managed);
-    const userAgent = resolved.defaultUserAgent ?? (resolved.mobileMode ? MOBILE_USER_AGENT : undefined);
+    const userAgent =
+      resolved.defaultUserAgent ?? (resolved.mobileMode ? MOBILE_USER_AGENT : undefined);
     if (userAgent) {
       view.webContents.setUserAgent(userAgent);
     }
+    if (instance.zoom_factor) {
+      view.webContents.setZoomFactor(instance.zoom_factor);
+    }
     void view.webContents.loadURL(startUrl, userAgent ? { userAgent } : undefined);
     return managed;
+  }
+
+  private configureSession(partition: Session, instance: ServiceInstance): void {
+    void partition.setProxy(proxyConfig(instance.proxy)).catch(() => undefined);
+    partition.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const decision = permissionDecision(this.db, instance.id, permission);
+      if (decision === 'allow') {
+        callback(true);
+        return;
+      }
+      if (decision === 'deny') {
+        callback(false);
+        return;
+      }
+      // Notifications are surfaced via the inbox; media keeps calls working by default.
+      callback(permission === 'notifications' || permission === 'media');
+    });
+    if (this.configuredSessions.has(partition)) {
+      return;
+    }
+    this.configuredSessions.add(partition);
+    partition.on('will-download', (_event, item) => {
+      const id = crypto.randomUUID();
+      const startedAt = Date.now();
+      const savePath = item.getSavePath();
+      upsertDownload(this.db, {
+        id,
+        service_instance_id: instance.id,
+        url: item.getURL(),
+        filename: item.getFilename(),
+        mime_type: item.getMimeType() || null,
+        total_bytes: item.getTotalBytes() || null,
+        received_bytes: item.getReceivedBytes(),
+        state: 'progressing',
+        path: savePath || null,
+        started_at: startedAt
+      });
+      item.on('updated', (_event, state) => {
+        upsertDownload(this.db, {
+          id,
+          service_instance_id: instance.id,
+          url: item.getURL(),
+          filename: item.getFilename(),
+          mime_type: item.getMimeType() || null,
+          total_bytes: item.getTotalBytes() || null,
+          received_bytes: item.getReceivedBytes(),
+          state: state === 'interrupted' ? 'interrupted' : 'progressing',
+          path: item.getSavePath() || null,
+          started_at: startedAt
+        });
+      });
+      item.once('done', (_event, state) => {
+        upsertDownload(this.db, {
+          id,
+          service_instance_id: instance.id,
+          url: item.getURL(),
+          filename: item.getFilename(),
+          mime_type: item.getMimeType() || null,
+          total_bytes: item.getTotalBytes() || null,
+          received_bytes: item.getReceivedBytes(),
+          state:
+            state === 'completed'
+              ? 'completed'
+              : state === 'cancelled'
+                ? 'cancelled'
+                : 'interrupted',
+          path: item.getSavePath() || null,
+          started_at: startedAt,
+          completed_at: Date.now()
+        });
+      });
+    });
   }
 
   private configureWebContents(instance: ServiceInstance, managed: ManagedView): void {
@@ -282,7 +385,8 @@ export class ServiceViewManager {
       this.injectCustomCode(managed);
     });
     contents.on('page-title-updated', () => {
-      if (managed.tabId) setTabUrlTitle(this.db, managed.tabId, contents.getURL(), contents.getTitle() || null);
+      if (managed.tabId)
+        setTabUrlTitle(this.db, managed.tabId, contents.getURL(), contents.getTitle() || null);
     });
     contents.on('focus', () => this.focus(managed.viewId));
     contents.on('before-input-event', () => this.markActive(managed.viewId));
@@ -330,7 +434,9 @@ export class ServiceViewManager {
       if (!['http:', 'https:'].includes(parsed.protocol)) {
         return false;
       }
-      return resolved.allowedDomains.some((domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`));
+      return resolved.allowedDomains.some(
+        (domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)
+      );
     } catch {
       return false;
     }
@@ -385,4 +491,21 @@ async function openExternalSafe(value: string): Promise<void> {
   } catch {
     // Ignore malformed or blocked URLs.
   }
+}
+
+function proxyConfig(proxy: ServiceProxy | null): Electron.ProxyConfig {
+  if (!proxy || proxy.mode === 'direct' || !proxy.host || !proxy.port) {
+    return { proxyRules: '' };
+  }
+  const scheme =
+    proxy.mode === 'socks4' || proxy.mode === 'socks5'
+      ? proxy.mode
+      : proxy.mode === 'socks'
+        ? 'socks5'
+        : 'http';
+  const auth = proxy.username ? `${encodeURIComponent(proxy.username)}@` : '';
+  return {
+    proxyRules: `${scheme}://${auth}${proxy.host}:${proxy.port}`,
+    proxyBypassRules: proxy.bypassRules
+  };
 }

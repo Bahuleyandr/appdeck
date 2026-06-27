@@ -21,11 +21,47 @@ const DEFAULT_SETTINGS: SettingsMap = {
   tracker_block: 'false',
   close_to_tray: 'true',
   global_hotkey: '',
-  onboarded: 'false'
+  onboarded: 'false',
+  launch_at_login: 'false',
+  auto_lock_minutes: '',
+  portable_mode_enabled: 'false',
+  portable_mode_root: ''
 };
 
+export type ProControlsPanel =
+  | 'workspaces'
+  | 'catalog'
+  | 'profiles'
+  | 'service'
+  | 'links'
+  | 'dashboard'
+  | 'custom'
+  | 'extensions'
+  | 'privacy'
+  | 'trust'
+  | 'performance'
+  | 'ai'
+  | 'automations'
+  | 'focus'
+  | 'browserImport'
+  | 'recipeStudio'
+  | 'extensionPack'
+  | 'firewall'
+  | 'snapshots'
+  | 'analytics'
+  | 'portable'
+  | 'peerSync'
+  | 'workKits'
+  | 'downloads'
+  | 'shortcuts'
+  | 'sync'
+  | 'import'
+  | 'diagnostics';
+
 export function applyTheme(theme: string): void {
-  const isLight = theme === 'light' || (theme === 'system' && !window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const isLight =
+    theme === 'light' ||
+    (theme === 'system' && !window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.classList.toggle('light', isLight);
 }
 
@@ -48,21 +84,59 @@ interface AppState {
   taskPanelOpen: boolean;
   commandOpen: boolean;
   inboxOpen: boolean;
+  proControlsOpen: boolean;
+  proControlsPanel: ProControlsPanel;
+  dashboardOpen: boolean;
   notifications: NotificationRecord[];
   unreadNotifications: number;
   tabs: Record<string, ServiceTab[]>;
   settings: SettingsMap;
   aiConfigured: boolean;
-  syncStatus: { configured: boolean; folderPath?: string; lastSyncAt?: number; pendingConflicts: number };
+  syncStatus: {
+    configured: boolean;
+    folderPath?: string;
+    lastSyncAt?: number;
+    pendingConflicts: number;
+  };
   load: () => Promise<void>;
   refreshServices: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
+  createWorkspace: (input: {
+    name: string;
+    icon?: string | null;
+    color?: string | null;
+    parentId?: string | null;
+  }) => Promise<void>;
+  updateWorkspace: (id: string, patch: Partial<Workspace>) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
+  createProfile: (input: {
+    label: string;
+    color?: string | null;
+    note?: string | null;
+  }) => Promise<void>;
+  updateProfile: (id: string, patch: Partial<Profile>) => Promise<void>;
+  deleteProfile: (id: string) => Promise<void>;
   selectService: (serviceId: string) => Promise<void>;
   setLayoutMode: (mode: Layout['mode']) => Promise<void>;
-  createService: (recipe: RecipeCatalogItem, displayName?: string) => Promise<void>;
-  createCustomService: (input: { name: string; url: string; domains: string[]; category: RecipeCatalogItem['category'] }) => Promise<void>;
+  createService: (
+    recipe: RecipeCatalogItem,
+    displayName?: string,
+    profileId?: string | null
+  ) => Promise<void>;
+  createCustomService: (input: {
+    name: string;
+    url: string;
+    domains: string[];
+    category: RecipeCatalogItem['category'];
+    profileId?: string | null;
+    defaultUserAgent?: string | null;
+    unreadTitleRegex?: string | null;
+    mobileMode?: boolean;
+  }) => Promise<void>;
   updateService: (id: string, patch: Partial<ServiceInstance>) => Promise<void>;
-  deleteService: (id: string) => Promise<void>;
+  deleteService: (id: string, wipeData?: boolean) => Promise<void>;
+  sleepService: (id: string) => Promise<void>;
+  wakeService: (id: string) => Promise<void>;
   setServiceState: (id: string, state: ServiceState) => void;
   setUnread: (id: string, count: UnreadCount) => void;
   setLocked: (locked: boolean) => void;
@@ -80,6 +154,9 @@ interface AppState {
   setTaskPanelOpen: (open: boolean) => void;
   setCommandOpen: (open: boolean) => void;
   setInboxOpen: (open: boolean) => void;
+  setProControlsOpen: (open: boolean, panel?: ProControlsPanel) => void;
+  setProControlsPanel: (panel: ProControlsPanel) => void;
+  setDashboardOpen: (open: boolean) => void;
   loadNotifications: () => Promise<void>;
   markNotificationRead: (id: number) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
@@ -113,6 +190,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   taskPanelOpen: false,
   commandOpen: false,
   inboxOpen: false,
+  proControlsOpen: false,
+  proControlsPanel: 'workspaces',
+  dashboardOpen: false,
   notifications: [],
   unreadNotifications: 0,
   tabs: {},
@@ -120,7 +200,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   aiConfigured: false,
   syncStatus: { configured: false, pendingConflicts: 0 },
   load: async () => {
-    const [workspaces, profiles, recipes, tasks, lockStatus, syncStatus, settings, unread, aiStatus] = await Promise.all([
+    const [
+      workspaces,
+      profiles,
+      recipes,
+      tasks,
+      lockStatus,
+      syncStatus,
+      settings,
+      unread,
+      aiStatus
+    ] = await Promise.all([
       api.workspaces.list(),
       api.profiles.list(),
       api.recipes.catalog(),
@@ -132,7 +222,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       api.ai.status()
     ]);
     applyTheme(settings.theme);
-    const selectedWorkspaceId = get().selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    const activeWorkspaces = workspaces.filter((workspace) => !workspace.disabled);
+    const selectedWorkspaceId = activeWorkspaces.some(
+      (workspace) => workspace.id === get().selectedWorkspaceId
+    )
+      ? get().selectedWorkspaceId
+      : (activeWorkspaces[0]?.id ?? null);
     let services: ServiceInstance[] = [];
     let layoutMode: Layout['mode'] = 'single';
     let selectedServiceIds: string[] = [];
@@ -140,9 +235,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       services = await api.services.list(selectedWorkspaceId);
       const layout = await api.layout.get(selectedWorkspaceId);
       layoutMode = layout.mode;
-      selectedServiceIds = layout.selected_service_ids.filter((id) => services.some((service) => service.id === id));
-      if (!selectedServiceIds.length && services[0]) {
-        selectedServiceIds = [services[0].id];
+      selectedServiceIds = layout.selected_service_ids.filter((id) =>
+        services.some((service) => service.id === id && !service.disabled)
+      );
+      if (!selectedServiceIds.length) {
+        const firstActive = services.find((service) => !service.disabled);
+        selectedServiceIds = firstActive ? [firstActive.id] : [];
       }
     }
     set({
@@ -169,23 +267,86 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ services });
   },
   selectWorkspace: async (workspaceId) => {
+    if (get().workspaces.some((workspace) => workspace.id === workspaceId && workspace.disabled)) {
+      return;
+    }
     const services = await api.services.list(workspaceId);
     const layout = await api.layout.get(workspaceId);
-    const selectedServiceIds = layout.selected_service_ids.filter((id) => services.some((service) => service.id === id));
+    const selectedServiceIds = layout.selected_service_ids.filter((id) =>
+      services.some((service) => service.id === id && !service.disabled)
+    );
+    const firstActive = services.find((service) => !service.disabled);
     set({
       selectedWorkspaceId: workspaceId,
       services,
       layoutMode: layout.mode,
-      selectedServiceIds: selectedServiceIds.length ? selectedServiceIds : services[0] ? [services[0].id] : []
+      selectedServiceIds: selectedServiceIds.length
+        ? selectedServiceIds
+        : firstActive
+          ? [firstActive.id]
+          : []
     });
+  },
+  createWorkspace: async (input) => {
+    const workspace = await api.workspaces.create(input);
+    set({ workspaces: await api.workspaces.list() });
+    await get().selectWorkspace(workspace.id);
+  },
+  updateWorkspace: async (id, patch) => {
+    const workspace = await api.workspaces.update(id, patch);
+    set((current) => ({
+      workspaces: current.workspaces.map((candidate) =>
+        candidate.id === id ? workspace : candidate
+      )
+    }));
+  },
+  deleteWorkspace: async (id) => {
+    const { selectedWorkspaceId, workspaces } = get();
+    if (workspaces.length <= 1) return;
+    await api.workspaces.delete(id);
+    const nextWorkspaces = await api.workspaces.list();
+    const nextActive = nextWorkspaces.filter((workspace) => !workspace.disabled);
+    const nextSelected =
+      selectedWorkspaceId === id ||
+      nextActive.every((workspace) => workspace.id !== selectedWorkspaceId)
+        ? nextActive[0]?.id
+        : selectedWorkspaceId;
+    set({
+      workspaces: nextWorkspaces,
+      selectedWorkspaceId: null,
+      services: [],
+      selectedServiceIds: []
+    });
+    if (nextSelected) {
+      await get().selectWorkspace(nextSelected);
+    }
+  },
+  createProfile: async (input) => {
+    await api.profiles.create(input);
+    set({ profiles: await api.profiles.list() });
+  },
+  updateProfile: async (id, patch) => {
+    const profile = await api.profiles.update(id, patch);
+    set((current) => ({
+      profiles: current.profiles.map((candidate) => (candidate.id === id ? profile : candidate))
+    }));
+  },
+  deleteProfile: async (id) => {
+    await api.profiles.delete(id);
+    set({ profiles: await api.profiles.list() });
+    await get().refreshServices();
   },
   selectService: async (serviceId) => {
     const { selectedWorkspaceId, layoutMode, selectedServiceIds } = get();
     if (!selectedWorkspaceId) return;
+    if (get().services.some((service) => service.id === serviceId && service.disabled)) return;
     const next =
       layoutMode === 'single'
         ? [serviceId]
-        : [serviceId, ...selectedServiceIds.filter((id) => id !== serviceId)].slice(0, layoutMode === 'split' ? 2 : 4);
+        : [serviceId, ...selectedServiceIds.filter((id) => id !== serviceId)].slice(
+            0,
+            layoutMode === 'split' ? 2 : 4
+          );
     await api.layout.set(selectedWorkspaceId, layoutMode, next, {});
     await api.views.focus(serviceId);
     set({ selectedServiceIds: next });
@@ -194,17 +355,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { selectedWorkspaceId, selectedServiceIds, services } = get();
     if (!selectedWorkspaceId) return;
     const limit = mode === 'single' ? 1 : mode === 'split' ? 2 : 4;
-    const next = selectedServiceIds.length ? selectedServiceIds.slice(0, limit) : services.slice(0, limit).map((service) => service.id);
+    const activeServices = services.filter((service) => !service.disabled);
+    const next = selectedServiceIds.length
+      ? selectedServiceIds
+          .filter((id) => activeServices.some((service) => service.id === id))
+          .slice(0, limit)
+      : activeServices.slice(0, limit).map((service) => service.id);
     await api.layout.set(selectedWorkspaceId, mode, next, {});
     set({ layoutMode: mode, selectedServiceIds: next });
   },
-  createService: async (recipe, displayName) => {
+  createService: async (recipe, displayName, profileId) => {
     const workspaceId = get().selectedWorkspaceId;
     if (!workspaceId) return;
     const service = await api.services.create({
       recipeId: recipe.id,
       workspaceId,
       displayName: displayName?.trim() || recipe.name,
+      profileId: profileId || null,
       color: recipe.source === 'builtin' ? null : '#2dd4bf'
     });
     await get().refreshServices();
@@ -216,22 +383,40 @@ export const useAppStore = create<AppState>((set, get) => ({
       name: input.name,
       category: input.category,
       start_url: input.url,
-      allowed_domains: input.domains
+      allowed_domains: input.domains,
+      default_user_agent: input.defaultUserAgent?.trim() || null,
+      unread_spec: input.unreadTitleRegex?.trim()
+        ? { titleRegex: input.unreadTitleRegex.trim() }
+        : null,
+      mobile_mode: input.mobileMode ?? false
     });
     set({ recipes: await api.recipes.catalog() });
-    await get().createService({ ...recipeToCatalog(recipe), source: 'custom' }, recipe.name);
+    await get().createService(
+      { ...recipeToCatalog(recipe), source: 'custom' },
+      recipe.name,
+      input.profileId
+    );
   },
   updateService: async (id, patch) => {
     await api.services.update(id, patch);
     await get().refreshServices();
   },
-  deleteService: async (id) => {
-    await api.services.delete(id, false);
+  deleteService: async (id, wipeData = false) => {
+    await api.services.delete(id, wipeData);
     const selected = get().selectedServiceIds.filter((serviceId) => serviceId !== id);
     await get().refreshServices();
     set({ selectedServiceIds: selected });
   },
-  setServiceState: (id, state) => set((current) => ({ serviceStates: { ...current.serviceStates, [id]: state } })),
+  sleepService: async (id) => {
+    await api.services.sleep(id);
+    set((current) => ({ serviceStates: { ...current.serviceStates, [id]: 'sleeping' } }));
+  },
+  wakeService: async (id) => {
+    await api.services.wake(id);
+    set((current) => ({ serviceStates: { ...current.serviceStates, [id]: 'loading' } }));
+  },
+  setServiceState: (id, state) =>
+    set((current) => ({ serviceStates: { ...current.serviceStates, [id]: state } })),
   setUnread: (id, count) => set((current) => ({ unread: { ...current.unread, [id]: count } })),
   setLocked: (locked) => set({ locked }),
   setupLock: async (passphrase) => {
@@ -277,8 +462,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ inboxOpen });
     if (inboxOpen) void get().loadNotifications();
   },
+  setProControlsOpen: (proControlsOpen, proControlsPanel) =>
+    set(proControlsPanel ? { proControlsOpen, proControlsPanel } : { proControlsOpen }),
+  setProControlsPanel: (proControlsPanel) => set({ proControlsPanel }),
+  setDashboardOpen: (dashboardOpen) => set({ dashboardOpen }),
   loadNotifications: async () => {
-    const [notifications, unreadNotifications] = await Promise.all([api.notifications.list(200), api.notifications.unreadCount()]);
+    const [notifications, unreadNotifications] = await Promise.all([
+      api.notifications.list(200),
+      api.notifications.unreadCount()
+    ]);
     set({ notifications, unreadNotifications });
   },
   markNotificationRead: async (id) => {
@@ -324,7 +516,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ settings });
   },
   toggleDnd: async () => {
-    await get().setSettingValue('global_dnd', get().settings.global_dnd === 'true' ? 'false' : 'true');
+    await get().setSettingValue(
+      'global_dnd',
+      get().settings.global_dnd === 'true' ? 'false' : 'true'
+    );
   }
 }));
 

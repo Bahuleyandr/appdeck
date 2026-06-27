@@ -17,7 +17,14 @@ const vaultPlaintextSchema = z.object({
   schemaVersion: z.number().int().positive(),
   records: z.array(
     z.object({
-      type: z.enum(['workspace', 'profile', 'customRecipe', 'serviceInstance', 'workspaceService', 'layout']),
+      type: z.enum([
+        'workspace',
+        'profile',
+        'customRecipe',
+        'serviceInstance',
+        'workspaceService',
+        'layout'
+      ]),
       id: z.string(),
       rev: z.number().int(),
       updatedAt: z.number().int(),
@@ -40,10 +47,12 @@ export function buildVaultPlaintext(db: Database.Database): VaultPlaintext {
       originDevice: workspace.origin_device,
       data: {
         id: workspace.id,
+        parent_id: workspace.parent_id,
         name: workspace.name,
         icon: workspace.icon,
         color: workspace.color,
         position: workspace.position,
+        disabled: workspace.disabled,
         focus_rules: workspace.focus_rules,
         sleep_defaults: workspace.sleep_defaults
       }
@@ -96,13 +105,17 @@ export function buildVaultPlaintext(db: Database.Database): VaultPlaintext {
         display_name: instance.display_name,
         partition_key: instance.partition_key,
         color: instance.color,
+        icon_path: instance.icon_path,
         pinned: instance.pinned,
         muted: instance.muted,
+        disabled: instance.disabled,
         sleep_policy: instance.sleep_policy,
         custom_css: instance.custom_css,
         custom_js: instance.custom_js,
         proxy: instance.proxy,
-        user_agent: instance.user_agent
+        user_agent: instance.user_agent,
+        zoom_factor: instance.zoom_factor,
+        spellcheck: instance.spellcheck
       }
     });
   }
@@ -153,7 +166,12 @@ export async function encryptVault(db: Database.Database, rootKey: Uint8Array): 
   const magic = Buffer.from(VAULT_MAGIC, 'ascii');
   const aad = Buffer.concat([magic, Buffer.from([VAULT_VERSION])]);
   const encrypted = await encryptWithRootKey(rootKey, plaintext, aad);
-  return Buffer.concat([magic, Buffer.from([VAULT_VERSION]), Buffer.from(encrypted.nonce), Buffer.from(encrypted.ciphertext)]);
+  return Buffer.concat([
+    magic,
+    Buffer.from([VAULT_VERSION]),
+    Buffer.from(encrypted.nonce),
+    Buffer.from(encrypted.ciphertext)
+  ]);
 }
 
 export async function decryptVault(bytes: Buffer, rootKey: Uint8Array): Promise<VaultPlaintext> {
@@ -192,14 +210,21 @@ export function localVaultHash(db: Database.Database): string {
   return vaultContentHash(buildVaultPlaintext(db));
 }
 
-export async function writeVaultFile(db: Database.Database, rootKey: Uint8Array, targetPath: string): Promise<void> {
+export async function writeVaultFile(
+  db: Database.Database,
+  rootKey: Uint8Array,
+  targetPath: string
+): Promise<void> {
   const bytes = await encryptVault(db, rootKey);
   const tempPath = join(dirname(targetPath), `.appdeck-${process.pid}-${Date.now()}.tmp`);
   writeFileSync(tempPath, bytes);
   renameSync(tempPath, targetPath);
 }
 
-export async function readVaultFile(sourcePath: string, rootKey: Uint8Array): Promise<VaultPlaintext> {
+export async function readVaultFile(
+  sourcePath: string,
+  rootKey: Uint8Array
+): Promise<VaultPlaintext> {
   return decryptVault(readFileSync(sourcePath), rootKey);
 }
 
@@ -224,7 +249,10 @@ function assertObjectKeysSafe(value: unknown, path: string): void {
   }
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const lower = key.toLowerCase();
-    if (DENIED_EXACT_KEYS.has(key) || DENIED_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))) {
+    if (
+      DENIED_EXACT_KEYS.has(key) ||
+      DENIED_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
+    ) {
       throw new Error(`Vault contains denied key "${key}" at ${path}`);
     }
     assertObjectKeysSafe(child, `${path}.${key}`);

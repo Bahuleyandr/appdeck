@@ -28,6 +28,8 @@ const BLOCKED_HOSTS = [
 export class TrackerBlocker {
   private enabled = false;
   private readonly applied = new WeakSet<Session>();
+  private blockedTotal = 0;
+  private readonly blockedByHost = new Map<string, number>();
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
@@ -40,11 +42,38 @@ export class TrackerBlocker {
     this.applied.add(session);
     session.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
       if (this.enabled && isBlocked(details.url)) {
+        this.recordBlocked(details.url);
         callback({ cancel: true });
         return;
       }
       callback({});
     });
+  }
+
+  stats(): {
+    enabled: boolean;
+    blockedTotal: number;
+    topHosts: Array<{ host: string; count: number }>;
+  } {
+    return {
+      enabled: this.enabled,
+      blockedTotal: this.blockedTotal,
+      topHosts: [...this.blockedByHost.entries()]
+        .map(([host, count]) => ({ host, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
+    };
+  }
+
+  private recordBlocked(url: string): void {
+    this.blockedTotal += 1;
+    let host = 'unknown';
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      // Keep the aggregate even if parsing fails.
+    }
+    this.blockedByHost.set(host, (this.blockedByHost.get(host) ?? 0) + 1);
   }
 }
 

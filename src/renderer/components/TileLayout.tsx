@@ -8,18 +8,48 @@ const STRIP_H = 30;
 
 export function TileLayout(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { services, selectedServiceIds, layoutMode, serviceStates, tabs, loadTabs, newTab, closeTab, selectTab, settingsOpen, catalogOpen, commandOpen, taskPanelOpen, inboxOpen, locked, settings } =
-    useAppStore();
+  const {
+    services,
+    selectedServiceIds,
+    layoutMode,
+    serviceStates,
+    tabs,
+    loadTabs,
+    newTab,
+    closeTab,
+    selectTab,
+    settingsOpen,
+    catalogOpen,
+    proControlsOpen,
+    commandOpen,
+    taskPanelOpen,
+    inboxOpen,
+    dashboardOpen,
+    locked,
+    settings
+  } = useAppStore();
   // Native WebContentsViews paint above the HTML layer. Full-screen modals must hide the panes
   // entirely; side panels (Inbox/Tasks) are flex columns that shrink the container instead, so the
   // ResizeObserver recomputes pane bounds to the narrower area — no overlap, service stays visible.
-  const modalOpen = settingsOpen || catalogOpen || commandOpen || locked || settings.onboarded !== 'true';
+  const modalOpen =
+    settingsOpen ||
+    catalogOpen ||
+    proControlsOpen ||
+    dashboardOpen ||
+    commandOpen ||
+    locked ||
+    settings.onboarded !== 'true';
 
   const visibleServices = useMemo(() => {
     const selected = selectedServiceIds
       .map((id) => services.find((service) => service.id === id))
+      .filter((service) => service && !service.disabled)
       .filter((service): service is NonNullable<typeof service> => Boolean(service));
-    return selected.length ? selected : services.slice(0, layoutMode === 'single' ? 1 : layoutMode === 'split' ? 2 : 4);
+    return selected.length
+      ? selected
+      : services
+          .filter((service) => !service.disabled)
+          .slice(0, layoutMode === 'single' ? 1 : layoutMode === 'split' ? 2 : 4);
   }, [layoutMode, selectedServiceIds, services]);
 
   const activeTab = (service: ServiceInstance): ServiceTab | undefined => {
@@ -61,10 +91,22 @@ export function TileLayout(): JSX.Element {
             const top = (tabs[service.id]?.length ?? 0) > 1 ? STRIP_H : 0;
             return {
               viewId: `${service.id}#${tab.id}`,
-              rect: { x: cell.x, y: cell.y + top, width: cell.width, height: Math.max(0, cell.height - top) }
+              rect: {
+                x: cell.x,
+                y: cell.y + top,
+                width: cell.width,
+                height: Math.max(0, cell.height - top)
+              }
             };
           })
-          .filter((entry): entry is { viewId: string; rect: { x: number; y: number; width: number; height: number } } => entry !== null);
+          .filter(
+            (
+              entry
+            ): entry is {
+              viewId: string;
+              rect: { x: number; y: number; width: number; height: number };
+            } => entry !== null
+          );
         void api.views.setBounds({ entries, visibleIds: entries.map((entry) => entry.viewId) });
       });
     };
@@ -90,14 +132,19 @@ export function TileLayout(): JSX.Element {
 
   return (
     <main ref={containerRef} className="relative flex-1 overflow-hidden bg-shell">
-      <div className={`grid h-full gap-2 p-2 ${layoutMode === 'single' ? 'grid-cols-1' : layoutMode === 'split' ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2'}`}>
+      <div
+        className={`grid h-full gap-2 p-2 ${layoutMode === 'single' ? 'grid-cols-1' : layoutMode === 'split' ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2'}`}
+      >
         {visibleServices.map((service) => {
           const state = serviceStates[service.id] ?? 'ready';
           const launcher = isLauncher(service);
           const serviceTabs = tabs[service.id] ?? [];
           const current = activeTab(service);
           return (
-            <section key={service.id} className="relative flex flex-col overflow-hidden rounded-md border border-line bg-panel">
+            <section
+              key={service.id}
+              className="relative flex flex-col overflow-hidden rounded-md border border-line bg-panel"
+            >
               {!launcher && serviceTabs.length > 1 && (
                 <div className="flex h-[30px] shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-shell px-1">
                   {serviceTabs.map((tab) => (
@@ -105,17 +152,27 @@ export function TileLayout(): JSX.Element {
                       key={tab.id}
                       className={`flex h-6 max-w-40 shrink-0 items-center gap-1 rounded px-2 text-xs ${tab.id === current?.id ? 'bg-panel text-ink' : 'text-muted hover:text-ink'}`}
                     >
-                      <button className="truncate" onClick={() => void selectTab(service.id, tab.id)}>
+                      <button
+                        className="truncate"
+                        onClick={() => void selectTab(service.id, tab.id)}
+                      >
                         {tab.title || service.display_name}
                       </button>
                       {serviceTabs.length > 1 && (
-                        <button className="text-muted hover:text-white" onClick={() => void closeTab(service.id, tab.id)}>
+                        <button
+                          className="text-muted hover:text-white"
+                          onClick={() => void closeTab(service.id, tab.id)}
+                        >
                           <X size={11} />
                         </button>
                       )}
                     </div>
                   ))}
-                  <button className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:text-white" title="New tab" onClick={() => void newTab(service.id)}>
+                  <button
+                    className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:text-white"
+                    title="New tab"
+                    onClick={() => void newTab(service.id)}
+                  >
                     <Plus size={13} />
                   </button>
                 </div>
@@ -124,14 +181,27 @@ export function TileLayout(): JSX.Element {
                 {(state === 'sleeping' || state === 'crashed' || launcher) && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-panel text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-md border border-line text-muted">
-                      {launcher ? <ExternalLink size={22} /> : state === 'sleeping' ? <Moon size={22} /> : <RefreshCw size={22} />}
+                      {launcher ? (
+                        <ExternalLink size={22} />
+                      ) : state === 'sleeping' ? (
+                        <Moon size={22} />
+                      ) : (
+                        <RefreshCw size={22} />
+                      )}
                     </div>
                     <div className="text-sm font-semibold">{service.display_name}</div>
                     <div className="max-w-sm px-6 text-xs text-muted">
-                      {launcher ? 'Signal opens through the installed desktop client.' : state === 'sleeping' ? 'Sleeping' : 'Crashed'}
+                      {launcher
+                        ? 'Signal opens through the installed desktop client.'
+                        : state === 'sleeping'
+                          ? 'Sleeping'
+                          : 'Crashed'}
                     </div>
                     {!launcher && (
-                      <button className="app-button" onClick={() => void api.services.wake(service.id)}>
+                      <button
+                        className="app-button"
+                        onClick={() => void api.services.wake(service.id)}
+                      >
                         Wake
                       </button>
                     )}
@@ -146,7 +216,12 @@ export function TileLayout(): JSX.Element {
   );
 }
 
-function slotRect(root: DOMRect, index: number, count: number, mode: 'single' | 'split' | 'grid'): { x: number; y: number; width: number; height: number } {
+function slotRect(
+  root: DOMRect,
+  index: number,
+  count: number,
+  mode: 'single' | 'split' | 'grid'
+): { x: number; y: number; width: number; height: number } {
   const gap = 8;
   const padding = 8;
   const x = root.x + padding;

@@ -11,7 +11,7 @@ export class AppLockService {
   constructor(
     private readonly db: Database.Database,
     private readonly onLocked: () => void,
-    private readonly idleTimeoutMs = 10 * 60_000
+    private idleTimeoutMs = 10 * 60_000
   ) {}
 
   status(): { locked: boolean; configured: boolean } {
@@ -24,7 +24,11 @@ export class AppLockService {
     setMeta(this.db, 'app_lock_salt', Buffer.from(salt).toString('base64'));
     setMeta(this.db, 'app_lock_hash', Buffer.from(hash).toString('base64'));
     if (safeStorage.isEncryptionAvailable()) {
-      setMeta(this.db, 'app_lock_safe_storage_probe', safeStorage.encryptString('configured').toString('base64'));
+      setMeta(
+        this.db,
+        'app_lock_safe_storage_probe',
+        safeStorage.encryptString('configured').toString('base64')
+      );
     }
     this.locked = false;
     this.bumpIdleTimer();
@@ -52,6 +56,12 @@ export class AppLockService {
     }
     this.locked = true;
     this.onLocked();
+  }
+
+  setIdleTimeoutMinutes(value: string | number | null | undefined): void {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    this.idleTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 60_000 : 10 * 60_000;
+    this.bumpIdleTimer();
   }
 
   bumpIdleTimer(): void {

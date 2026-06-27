@@ -2,9 +2,30 @@ import type Database from 'better-sqlite3';
 import { getMeta, setMeta } from './meta.js';
 
 // User-facing settings persisted in the meta table. Local-only (never synced).
-export type SettingKey = 'theme' | 'global_dnd' | 'tracker_block' | 'close_to_tray' | 'global_hotkey' | 'onboarded';
+export type SettingKey =
+  | 'theme'
+  | 'global_dnd'
+  | 'tracker_block'
+  | 'close_to_tray'
+  | 'global_hotkey'
+  | 'onboarded'
+  | 'launch_at_login'
+  | 'auto_lock_minutes'
+  | 'portable_mode_enabled'
+  | 'portable_mode_root';
 
-const SETTING_KEYS: SettingKey[] = ['theme', 'global_dnd', 'tracker_block', 'close_to_tray', 'global_hotkey', 'onboarded'];
+const SETTING_KEYS: SettingKey[] = [
+  'theme',
+  'global_dnd',
+  'tracker_block',
+  'close_to_tray',
+  'global_hotkey',
+  'onboarded',
+  'launch_at_login',
+  'auto_lock_minutes',
+  'portable_mode_enabled',
+  'portable_mode_root'
+];
 
 const DEFAULTS: Record<SettingKey, string> = {
   theme: 'system',
@@ -12,7 +33,11 @@ const DEFAULTS: Record<SettingKey, string> = {
   tracker_block: 'false',
   close_to_tray: 'true',
   global_hotkey: '',
-  onboarded: 'false'
+  onboarded: 'false',
+  launch_at_login: 'false',
+  auto_lock_minutes: '',
+  portable_mode_enabled: 'false',
+  portable_mode_root: ''
 };
 
 export function getSetting(db: Database.Database, key: SettingKey): string {

@@ -18,6 +18,7 @@
     "dist": "npm run build && npm run rebuild:electron && electron-builder --publish never -c.npmRebuild=false",
     "dist:portable": "npm run build && npm run rebuild:electron && electron-builder --win portable --publish never -c.npmRebuild=false",
     "release": "npm run build && npm run rebuild:electron && electron-builder --publish always -c.npmRebuild=false",
+    "release:check": "powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },

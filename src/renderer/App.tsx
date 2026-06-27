@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
+import { DashboardHome } from './components/DashboardHome';
 import { InboxPanel } from './components/InboxPanel';
 import { LockScreen } from './components/LockScreen';
 import { Onboarding } from './components/Onboarding';
+import { ProControls } from './components/ProControls';
 import { ServiceCatalog } from './components/ServiceCatalog';
 import { ServiceRail } from './components/ServiceRail';
 import { Settings } from './components/Settings';
@@ -15,13 +17,26 @@ import { api } from './ipc/client';
 import { useAppStore } from './state/appStore';
 
 export function App(): JSX.Element {
-  const { loading, load, setServiceState, setUnread, setLocked, selectService, setCommandOpen, bumpUnread, applySettings } = useAppStore();
+  const {
+    loading,
+    load,
+    setServiceState,
+    setUnread,
+    setLocked,
+    selectService,
+    setCommandOpen,
+    bumpUnread,
+    applySettings
+  } = useAppStore();
 
   useEffect(() => {
     void load();
     const unsubscribers = [
       api.on('event:service-state', (payload) => {
-        const event = payload as { instanceId: string; state: Parameters<typeof setServiceState>[1] };
+        const event = payload as {
+          instanceId: string;
+          state: Parameters<typeof setServiceState>[1];
+        };
         setServiceState(event.instanceId, event.state);
       }),
       api.on('event:unread', (payload) => {
@@ -63,10 +78,23 @@ export function App(): JSX.Element {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       window.removeEventListener('keydown', keyHandler);
     };
-  }, [load, selectService, setCommandOpen, setLocked, setServiceState, setUnread, bumpUnread, applySettings]);
+  }, [
+    load,
+    selectService,
+    setCommandOpen,
+    setLocked,
+    setServiceState,
+    setUnread,
+    bumpUnread,
+    applySettings
+  ]);
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center bg-shell text-muted">Loading AppDeck</div>;
+    return (
+      <div className="flex h-full items-center justify-center bg-shell text-muted">
+        Loading AppDeck
+      </div>
+    );
   }
 
   return (
@@ -80,6 +108,8 @@ export function App(): JSX.Element {
       <InboxPanel />
       <TaskPanel />
       <ServiceCatalog />
+      <ProControls />
+      <DashboardHome />
       <CommandPalette />
       <Settings />
       <Onboarding />

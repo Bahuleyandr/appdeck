@@ -1,6 +1,7 @@
 import { shell } from 'electron';
 import type Database from 'better-sqlite3';
 import { listServiceInstances } from '../db/repositories/serviceInstances.js';
+import { listLinkRules, matchLinkRule } from '../db/repositories/linkRules.js';
 import type { RecipeLoader } from '../recipes/loader.js';
 import type { ServiceViewManager } from '../views/serviceViewManager.js';
 
@@ -24,16 +25,44 @@ export class LinkRouter {
     if (!target) {
       return false;
     }
+    const ruleTarget = this.matchRule(target);
+    if (ruleTarget === 'external') {
+      void shell.openExternal(target);
+      return false;
+    }
+    if (ruleTarget) {
+      this.routeTo(ruleTarget, target);
+      return true;
+    }
     const instanceId = this.match(target);
     if (!instanceId) {
       void shell.openExternal(target);
       return false;
     }
+    this.routeTo(instanceId, target);
+    return true;
+  }
+
+  private routeTo(instanceId: string, target: string): void {
     this.viewManager.wake(instanceId);
     this.viewManager.navigate(instanceId, target);
     this.viewManager.focus(instanceId);
     this.sendPush('event:notification-clicked', { instanceId });
-    return true;
+  }
+
+  private matchRule(url: string): string | 'external' | null {
+    const rule = matchLinkRule(listLinkRules(this.db), url);
+    if (!rule) return null;
+    if (rule.target_type === 'external') return 'external';
+    const services = listServiceInstances(this.db);
+    if (rule.target_type === 'service') return rule.target_id;
+    if (rule.target_type === 'profile') {
+      return services.find((service) => service.profile_id === rule.target_id)?.id ?? null;
+    }
+    if (rule.target_type === 'workspace') {
+      return rule.target_id ? (listServiceInstances(this.db, rule.target_id)[0]?.id ?? null) : null;
+    }
+    return null;
   }
 
   private match(url: string): string | null {
@@ -50,7 +79,9 @@ export class LinkRouter {
       } catch {
         continue;
       }
-      const matches = resolved.allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+      const matches = resolved.allowedDomains.some(
+        (domain) => host === domain || host.endsWith(`.${domain}`)
+      );
       if (matches && !resolved.isLauncherOnly) {
         return instance.id;
       }

@@ -5,7 +5,20 @@ import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
 
 export function CommandPalette(): JSX.Element | null {
-  const { commandOpen, setCommandOpen, selectService, selectWorkspace, lock, selectedServiceIds, markNotificationRead } = useAppStore();
+  const {
+    commandOpen,
+    setCommandOpen,
+    selectService,
+    selectWorkspace,
+    lock,
+    selectedServiceIds,
+    markNotificationRead,
+    setDashboardOpen,
+    setProControlsOpen,
+    setSettingsOpen,
+    setTaskPanelOpen,
+    setCatalogOpen
+  } = useAppStore();
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<PaletteItem[]>([]);
   useEffect(() => {
@@ -18,7 +31,12 @@ export function CommandPalette(): JSX.Element | null {
       <section className="w-[620px] rounded-md border border-line bg-panel shadow-2xl">
         <div className="flex h-12 items-center gap-2 border-b border-line px-3">
           <Search size={16} className="text-muted" />
-          <input className="h-full flex-1 bg-transparent text-sm outline-none" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input
+            className="h-full flex-1 bg-transparent text-sm outline-none"
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <button className="icon-button" title="Close" onClick={() => setCommandOpen(false)}>
             <X size={16} />
           </button>
@@ -33,7 +51,27 @@ export function CommandPalette(): JSX.Element | null {
                 if (item.action === 'select-service') void selectService(item.id);
                 if (item.action === 'select-workspace') void selectWorkspace(item.id);
                 if (item.action === 'lock') void lock();
-                if (item.action === 'reload' && selectedServiceIds[0]) void api.services.reload(selectedServiceIds[0]);
+                if (item.action === 'reload' && selectedServiceIds[0])
+                  void api.services.reload(selectedServiceIds[0]);
+                if (item.action === 'open-dashboard') setDashboardOpen(true);
+                if (item.action === 'open-pro-controls') setProControlsOpen(true);
+                if (item.action === 'open-downloads') setProControlsOpen(true, 'downloads');
+                if (item.action === 'open-automations') setProControlsOpen(true, 'automations');
+                if (item.action === 'open-focus-modes') setProControlsOpen(true, 'focus');
+                if (item.action === 'open-browser-bookmarks')
+                  setProControlsOpen(true, 'browserImport');
+                if (item.action === 'open-recipe-studio') setProControlsOpen(true, 'recipeStudio');
+                if (item.action === 'open-firewall') setProControlsOpen(true, 'firewall');
+                if (item.action === 'open-snapshots') setProControlsOpen(true, 'snapshots');
+                if (item.action === 'open-analytics') setProControlsOpen(true, 'analytics');
+                if (item.action === 'open-work-kits') setProControlsOpen(true, 'workKits');
+                if (item.action === 'open-peer-sync') setProControlsOpen(true, 'peerSync');
+                if (item.action === 'open-portable') setProControlsOpen(true, 'portable');
+                if (item.action === 'open-settings') setSettingsOpen(true);
+                if (item.action === 'open-tasks') setTaskPanelOpen(true);
+                if (item.action === 'add-service' || item.action === 'open-add-service')
+                  setCatalogOpen(true);
+                if (item.action === 'open-download') void api.downloads.open(item.id);
                 if (item.action === 'open-notification' && item.instanceId) {
                   void markNotificationRead(Number(item.id));
                   void selectService(item.instanceId);
@@ -42,7 +80,9 @@ export function CommandPalette(): JSX.Element | null {
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate">{item.label}</span>
-                {item.sublabel && <span className="truncate text-xs text-muted">{item.sublabel}</span>}
+                {item.sublabel && (
+                  <span className="truncate text-xs text-muted">{item.sublabel}</span>
+                )}
               </span>
               <span className="ml-2 shrink-0 text-xs text-muted">{item.type}</span>
             </button>
