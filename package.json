@@ -5,6 +5,9 @@
   "main": "out/main/index.js",
   "author": "AppDeck",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "private": true,
   "type": "module",
   "scripts": {
