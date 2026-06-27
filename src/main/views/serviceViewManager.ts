@@ -2,7 +2,13 @@ import { BrowserWindow, WebContentsView, shell, session, type Session } from 'el
 import type Database from 'better-sqlite3';
 import { MOBILE_USER_AGENT } from '../../shared/constants.js';
 import { isHttpUrl } from '../../shared/ipc-contract.js';
-import type { Rect, ServiceInstance, ServiceProxy, ServiceState } from '../../shared/types.js';
+import type {
+  PermissionPolicy,
+  Rect,
+  ServiceInstance,
+  ServiceProxy,
+  ServiceState
+} from '../../shared/types.js';
 import { getServiceInstance, setServiceLastUrl } from '../db/repositories/serviceInstances.js';
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
 import { upsertDownload } from '../db/repositories/downloads.js';
@@ -21,6 +27,10 @@ function tabIdOf(viewId: string): string | null {
 }
 
 export type PushSender = (channel: string, payload?: unknown) => void;
+
+export function resolvePermissionDecision(decision: PermissionPolicy['decision'] | null): boolean {
+  return decision === 'allow';
+}
 
 // Injected into each service page's MAIN world via privileged executeJavaScript (bypasses the
 // page's CSP). Replacing window.Notification in an isolated preload world has no effect on the
@@ -324,17 +334,10 @@ export class ServiceViewManager {
   private configureSession(partition: Session, instance: ServiceInstance): void {
     void partition.setProxy(proxyConfig(instance.proxy)).catch(() => undefined);
     partition.setPermissionRequestHandler((_webContents, permission, callback) => {
-      const decision = permissionDecision(this.db, instance.id, permission);
-      if (decision === 'allow') {
-        callback(true);
-        return;
-      }
-      if (decision === 'deny') {
-        callback(false);
-        return;
-      }
-      // Notifications are surfaced via the inbox; media keeps calls working by default.
-      callback(permission === 'notifications' || permission === 'media');
+      callback(resolvePermissionDecision(permissionDecision(this.db, instance.id, permission)));
+    });
+    partition.setPermissionCheckHandler((_webContents, permission) => {
+      return resolvePermissionDecision(permissionDecision(this.db, instance.id, permission));
     });
     if (this.configuredSessions.has(partition)) {
       return;
