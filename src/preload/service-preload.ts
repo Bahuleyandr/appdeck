@@ -1,5 +1,10 @@
 import { ipcRenderer } from 'electron';
-import type { DeclarativeUnreadSpec, ResolvedRecipeForInstance, UnreadCount } from '../shared/types.js';
+import type {
+  DeclarativeUnreadSpec,
+  ResolvedRecipeForInstance,
+  UnreadCount
+} from '../shared/types.js';
+import { execUnreadRegex } from './unread.js';
 
 const instanceId = process.argv
   .find((arg) => arg.startsWith('--appdeck-instance='))
@@ -15,7 +20,9 @@ let lastCount: UnreadCount = { direct: 0, indirect: 0 };
 void bootstrap();
 
 async function bootstrap(): Promise<void> {
-  const resolved = (await ipcRenderer.invoke('recipe:resolveForInstance', { instanceId: serviceInstanceId })) as ResolvedRecipeForInstance;
+  const resolved = (await ipcRenderer.invoke('recipe:resolveForInstance', {
+    instanceId: serviceInstanceId
+  })) as ResolvedRecipeForInstance;
   forwardMainWorldNotifications(serviceInstanceId);
   const report = (): void => {
     const count = readUnread(resolved);
@@ -54,7 +61,12 @@ async function bootstrap(): Promise<void> {
 // each notification here; forward it to the main process, where mute/DND is applied.
 function forwardMainWorldNotifications(id: string): void {
   window.addEventListener('message', (event: MessageEvent) => {
-    const data = event.data as { __appdeck?: string; title?: string; body?: string; icon?: string } | null;
+    const data = event.data as {
+      __appdeck?: string;
+      title?: string;
+      body?: string;
+      icon?: string;
+    } | null;
     if (data && data.__appdeck === 'notify') {
       void ipcRenderer.invoke('notify:incoming', {
         instanceId: id,
@@ -79,9 +91,15 @@ function readUnread(resolved: ResolvedRecipeForInstance): UnreadCount {
     case 'telegram':
       return readDomCounters(['.badge', '.counter', '[class*="unread"]']);
     case 'slack':
-      return readDomCounters(['[data-qa*="mention"]', '[class*="mention"]'], readTitleLeadingCount().direct);
+      return readDomCounters(
+        ['[data-qa*="mention"]', '[class*="mention"]'],
+        readTitleLeadingCount().direct
+      );
     case 'discord':
-      return readDomCounters(['[class*="numberBadge"]', '[class*="mentionsBadge"]'], readTitleLeadingCount().direct);
+      return readDomCounters(
+        ['[class*="numberBadge"]', '[class*="mentionsBadge"]'],
+        readTitleLeadingCount().direct
+      );
     default:
       return { direct: 0, indirect: 0 };
   }
@@ -89,7 +107,7 @@ function readUnread(resolved: ResolvedRecipeForInstance): UnreadCount {
 
 function readDeclarative(spec: DeclarativeUnreadSpec): UnreadCount {
   if (spec.titleRegex) {
-    const match = new RegExp(spec.titleRegex).exec(document.title);
+    const match = execUnreadRegex(spec.titleRegex, document.title);
     return { direct: match?.[1] ? Number(match[1]) : 0, indirect: 0 };
   }
   if (!spec.selector) {
@@ -100,7 +118,7 @@ function readDeclarative(spec: DeclarativeUnreadSpec): UnreadCount {
   if (!raw) {
     return { direct: 0, indirect: 0 };
   }
-  const match = spec.regex ? new RegExp(spec.regex).exec(raw) : /(\d+)/.exec(raw);
+  const match = spec.regex ? execUnreadRegex(spec.regex, raw) : execUnreadRegex('(\\d+)', raw);
   return { direct: match?.[1] ? Number(match[1]) : 0, indirect: 0 };
 }
 
