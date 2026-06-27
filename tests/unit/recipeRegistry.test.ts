@@ -6,6 +6,7 @@ import {
   recipeRegistryStats,
   validateRecipeRegistryPack
 } from '../../src/main/db/repositories/recipeRegistry.js';
+import { RecipeLoader } from '../../src/main/recipes/loader.js';
 import { createTestDb } from './helpers.js';
 
 describe('recipe registry', () => {
@@ -16,6 +17,17 @@ describe('recipe registry', () => {
     expect(stats.seed).toBeGreaterThanOrEqual(1500);
     expect(stats.total).toBeGreaterThanOrEqual(1500);
     expect(listRecipeRegistryEntries(db, 'slack mobile', 5)[0]?.mobile_mode).toBe(true);
+  });
+
+  it('compacts synthetic seed variants in the user-facing app catalog', () => {
+    const { db } = createTestDb();
+    const catalog = new RecipeLoader(db).catalog();
+    const whatsappNames = catalog
+      .filter((recipe) => recipe.name.toLowerCase().includes('whatsapp'))
+      .map((recipe) => recipe.name);
+
+    expect(whatsappNames).toEqual(['WhatsApp Web']);
+    expect(catalog.some((recipe) => recipe.name === 'Fastmail')).toBe(true);
   });
 
   it('imports community JSON packs with aliases and inferred domains', () => {

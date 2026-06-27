@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { Recipe, RecipeCatalogItem, ResolvedRecipeForInstance } from './types.js';
-import type { ServiceInstance } from '../../shared/types.js';
+import type { RecipeRegistryEntry, ServiceInstance } from '../../shared/types.js';
 import { listCustomRecipes } from '../db/repositories/customRecipes.js';
 import { getServiceInstance } from '../db/repositories/serviceInstances.js';
 import {
@@ -42,22 +42,30 @@ export class RecipeLoader {
       unreadSpec: recipe.unread_spec,
       source: 'custom'
     }));
-    const registry = listRecipeRegistryEntries(this.db, '', 2000).map<RecipeCatalogItem>(
-      (recipe) => ({
-        id: recipe.id,
-        name: recipe.name,
-        category: recipe.category,
-        startUrl: recipe.start_url,
-        allowedDomains: recipe.allowed_domains,
-        aliases: recipe.aliases,
-        icon: recipe.icon,
-        iconPath: recipe.icon_path,
-        defaultUserAgent: recipe.default_user_agent ?? undefined,
-        unreadSpec: recipe.unread_spec,
-        mobileMode: recipe.mobile_mode,
-        source: 'registry'
-      })
+    const existingNames = new Set([...builtin, ...custom].map((recipe) => normalizeName(recipe.name)));
+    const existingUrls = new Set(
+      [...builtin, ...custom]
+        .map((recipe) => normalizeUrl(recipe.startUrl))
+        .filter((url): url is string => Boolean(url))
     );
+    const registry = compactRegistryCatalog(
+      listRecipeRegistryEntries(this.db, '', 5000),
+      existingNames,
+      existingUrls
+    ).map<RecipeCatalogItem>((recipe) => ({
+      id: recipe.id,
+      name: recipe.name,
+      category: recipe.category,
+      startUrl: recipe.start_url,
+      allowedDomains: recipe.allowed_domains,
+      aliases: recipe.aliases,
+      icon: recipe.icon,
+      iconPath: recipe.icon_path,
+      defaultUserAgent: recipe.default_user_agent ?? undefined,
+      unreadSpec: recipe.unread_spec,
+      mobileMode: recipe.mobile_mode,
+      source: 'registry'
+    }));
     return [...builtin, ...custom, ...registry].sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -119,5 +127,74 @@ export class RecipeLoader {
       customCss: instance.custom_css,
       customJs: instance.custom_js
     };
+  }
+}
+
+const SYNTHETIC_SEED_VARIANTS = new Set([
+  'inbox',
+  'admin',
+  'dashboard',
+  'console',
+  'workspace',
+  'personal',
+  'business',
+  'team',
+  'support',
+  'docs',
+  'calendar',
+  'tasks',
+  'reports',
+  'analytics',
+  'mobile',
+  'lite',
+  'portal'
+]);
+
+function compactRegistryCatalog(
+  entries: RecipeRegistryEntry[],
+  existingNames: Set<string>,
+  existingUrls: Set<string>
+): RecipeRegistryEntry[] {
+  const visible: RecipeRegistryEntry[] = [];
+  const seenNames = new Set(existingNames);
+  const seenSeedUrls = new Set(existingUrls);
+
+  for (const entry of entries) {
+    const nameKey = normalizeName(entry.name);
+    const urlKey = normalizeUrl(entry.start_url);
+    if (seenNames.has(nameKey)) continue;
+    if (entry.source === 'seed' && isSyntheticSeedVariant(entry)) continue;
+    if (entry.source === 'seed' && urlKey && seenSeedUrls.has(urlKey)) continue;
+
+    visible.push(entry);
+    seenNames.add(nameKey);
+    if (entry.source === 'seed' && urlKey) {
+      seenSeedUrls.add(urlKey);
+    }
+  }
+
+  return visible;
+}
+
+function isSyntheticSeedVariant(entry: RecipeRegistryEntry): boolean {
+  if (entry.source !== 'seed') return false;
+  const name = normalizeName(entry.name);
+  return entry.aliases.some((alias) => {
+    const variant = normalizeName(alias);
+    return SYNTHETIC_SEED_VARIANTS.has(variant) && name.endsWith(` ${variant}`);
+  });
+}
+
+function normalizeName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname.replace(/\/+$/g, '')}`.toLowerCase();
+  } catch {
+    return value.trim().toLowerCase().replace(/\/+$/g, '');
   }
 }

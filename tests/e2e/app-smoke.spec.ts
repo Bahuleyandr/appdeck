@@ -41,3 +41,20 @@ test('keeps onboarding actions visible in a short window', async () => {
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test('does not show synthetic seed variants in service search', async () => {
+  const { app, userData } = await launchApp();
+  try {
+    const window = await app.firstWindow();
+    await expect(window.getByText('Welcome to AppDeck')).toBeVisible();
+    await window.getByRole('button', { name: 'Skip' }).click();
+    await window.locator('button[title="Add service"]').first().click();
+    await window.getByPlaceholder('Search services').fill('whats');
+
+    await expect(window.getByText('WhatsApp Web', { exact: true })).toHaveCount(1);
+    await expect(window.getByText('WhatsApp Web Admin')).toHaveCount(0);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
