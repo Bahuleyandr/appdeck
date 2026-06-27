@@ -21,25 +21,38 @@ interface UserRow {
 }
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+const MAX_VAULT_CIPHERTEXT_CHARS = 2_000_000;
+const DUMMY_AUTH_HASH = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (request.method === 'POST' && url.pathname === '/api/signup') return await signup(request, env);
-      if (request.method === 'GET' && url.pathname === '/api/auth-params') return await authParams(url, env);
-      if (request.method === 'POST' && url.pathname === '/api/login') return await login(request, env);
-      if (request.method === 'GET' && url.pathname === '/api/vault') return await getVault(request, env);
-      if (request.method === 'PUT' && url.pathname === '/api/vault') return await putVault(request, env);
+      if (request.method === 'POST' && url.pathname === '/api/signup')
+        return await signup(request, env);
+      if (request.method === 'GET' && url.pathname === '/api/auth-params')
+        return await authParams(url, env);
+      if (request.method === 'POST' && url.pathname === '/api/login')
+        return await login(request, env);
+      if (request.method === 'GET' && url.pathname === '/api/vault')
+        return await getVault(request, env);
+      if (request.method === 'PUT' && url.pathname === '/api/vault')
+        return await putVault(request, env);
       return json({ error: 'not_found' }, 404);
     } catch (error) {
-      return json({ error: 'server_error', message: error instanceof Error ? error.message : String(error) }, 500);
+      console.error('Unhandled sync server error', error);
+      return json({ error: 'server_error' }, 500);
     }
   }
 };
 
 async function signup(request: Request, env: Env): Promise<Response> {
-  const body = (await request.json()) as { email?: string; authSalt?: string; authHash?: string; wrappedKey?: string };
+  const body = (await request.json()) as {
+    email?: string;
+    authSalt?: string;
+    authHash?: string;
+    wrappedKey?: string;
+  };
   const email = normalizeEmail(body.email);
   if (!email || !body.authSalt || !body.authHash || !body.wrappedKey) {
     return json({ error: 'invalid_request' }, 400);
@@ -49,7 +62,9 @@ async function signup(request: Request, env: Env): Promise<Response> {
     return json({ error: 'email_taken' }, 409);
   }
   const id = crypto.randomUUID();
-  await env.DB.prepare('INSERT INTO users (id, email, auth_salt, auth_hash, wrapped_key, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+  await env.DB.prepare(
+    'INSERT INTO users (id, email, auth_salt, auth_hash, wrapped_key, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
     .bind(id, email, body.authSalt, body.authHash, body.wrappedKey, Date.now())
     .run();
   return json({ token: await mintToken(id, env) });
@@ -58,33 +73,35 @@ async function signup(request: Request, env: Env): Promise<Response> {
 async function authParams(url: URL, env: Env): Promise<Response> {
   const email = normalizeEmail(url.searchParams.get('email'));
   if (!email) return json({ error: 'invalid_request' }, 400);
-  const user = (await env.DB.prepare('SELECT auth_salt, wrapped_key FROM users WHERE email = ?').bind(email).first()) as
-    | Pick<UserRow, 'auth_salt' | 'wrapped_key'>
-    | null;
-  if (!user) return json({ error: 'not_found' }, 404);
-  return json({ authSalt: user.auth_salt, wrappedKey: user.wrapped_key });
+  const user = (await env.DB.prepare('SELECT auth_salt FROM users WHERE email = ?')
+    .bind(email)
+    .first()) as Pick<UserRow, 'auth_salt'> | null;
+  return json({ authSalt: user?.auth_salt ?? (await decoyAuthSalt(email, env)) });
 }
 
 async function login(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as { email?: string; authHash?: string };
   const email = normalizeEmail(body.email);
   if (!email || !body.authHash) return json({ error: 'invalid_request' }, 400);
-  const user = (await env.DB.prepare('SELECT id, auth_hash FROM users WHERE email = ?').bind(email).first()) as
-    | Pick<UserRow, 'id' | 'auth_hash'>
-    | null;
-  if (!user || !timingSafeEqual(user.auth_hash, body.authHash)) {
+  const user = (await env.DB.prepare('SELECT id, auth_hash, wrapped_key FROM users WHERE email = ?')
+    .bind(email)
+    .first()) as Pick<UserRow, 'id' | 'auth_hash' | 'wrapped_key'> | null;
+  const hashMatches = timingSafeEqual(user?.auth_hash ?? DUMMY_AUTH_HASH, body.authHash);
+  if (!user || !hashMatches) {
     return json({ error: 'invalid_credentials' }, 401);
   }
-  return json({ token: await mintToken(user.id, env) });
+  return json({ token: await mintToken(user.id, env), wrappedKey: user.wrapped_key });
 }
 
 async function getVault(request: Request, env: Env): Promise<Response> {
   const userId = await requireUser(request, env);
   if (!userId) return json({ error: 'unauthorized' }, 401);
-  const row = (await env.DB.prepare('SELECT ciphertext, revision FROM vaults WHERE user_id = ?').bind(userId).first()) as
-    | { ciphertext: string; revision: number }
-    | null;
-  return json(row ? { ciphertext: row.ciphertext, revision: row.revision } : { ciphertext: null, revision: 0 });
+  const row = (await env.DB.prepare('SELECT ciphertext, revision FROM vaults WHERE user_id = ?')
+    .bind(userId)
+    .first()) as { ciphertext: string; revision: number } | null;
+  return json(
+    row ? { ciphertext: row.ciphertext, revision: row.revision } : { ciphertext: null, revision: 0 }
+  );
 }
 
 async function putVault(request: Request, env: Env): Promise<Response> {
@@ -94,9 +111,12 @@ async function putVault(request: Request, env: Env): Promise<Response> {
   if (typeof body.ciphertext !== 'string' || typeof body.revision !== 'number') {
     return json({ error: 'invalid_request' }, 400);
   }
-  const current = (await env.DB.prepare('SELECT revision FROM vaults WHERE user_id = ?').bind(userId).first()) as
-    | { revision: number }
-    | null;
+  if (body.ciphertext.length > MAX_VAULT_CIPHERTEXT_CHARS) {
+    return json({ error: 'payload_too_large' }, 413);
+  }
+  const current = (await env.DB.prepare('SELECT revision FROM vaults WHERE user_id = ?')
+    .bind(userId)
+    .first()) as { revision: number } | null;
   // Optimistic concurrency: reject stale writes so a device must pull+merge first.
   if (current && body.revision <= current.revision) {
     return json({ error: 'conflict', revision: current.revision }, 409);
@@ -131,9 +151,23 @@ async function requireUser(request: Request, env: Env): Promise<string | null> {
 }
 
 async function hmac(data: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return base64url(await hmacBytes(data, secret));
+}
+
+async function hmacBytes(data: string, secret: string): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-  return base64url(new Uint8Array(sig));
+  return new Uint8Array(sig);
+}
+
+async function decoyAuthSalt(email: string, env: Env): Promise<string> {
+  return base64((await hmacBytes(email, env.TOKEN_SECRET)).slice(0, 16));
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -144,9 +178,13 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 function base64url(bytes: Uint8Array): string {
+  return base64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary);
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -155,5 +193,8 @@ function normalizeEmail(value: string | null | undefined): string | null {
 }
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  });
 }

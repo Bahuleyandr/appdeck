@@ -2,7 +2,14 @@ import { safeStorage } from 'electron';
 import type Database from 'better-sqlite3';
 import type { SyncResult } from '../../shared/types.js';
 import { getMeta, setMeta } from '../db/repositories/meta.js';
-import { deriveAuthHash, generateRootKey, newAuthSalt, unwrapRootKey, wrapRootKey, type WrappedRootKey } from './crypto.js';
+import {
+  deriveAuthHash,
+  generateRootKey,
+  newAuthSalt,
+  unwrapRootKey,
+  wrapRootKey,
+  type WrappedRootKey
+} from './crypto.js';
 import { mergeVaultPlaintext } from './merge.js';
 import { decryptVault, encryptVault } from './vault.js';
 
@@ -10,6 +17,10 @@ const CLOUD_DEBOUNCE_MS = 2000;
 
 interface AuthParams {
   authSalt: string;
+}
+
+interface LoginResponse {
+  token: string;
   wrappedKey: string;
 }
 
@@ -26,7 +37,10 @@ export class CloudSyncService {
 
   status(): { configured: boolean; email?: string } {
     const email = getMeta(this.db, 'cloud_email') ?? undefined;
-    return { configured: Boolean(getMeta(this.db, 'cloud_url') && getMeta(this.db, 'cloud_token_safe')), email };
+    return {
+      configured: Boolean(getMeta(this.db, 'cloud_url') && getMeta(this.db, 'cloud_token_safe')),
+      email
+    };
   }
 
   async signup(serverUrl: string, email: string, password: string): Promise<void> {
@@ -61,8 +75,8 @@ export class CloudSyncService {
     });
     if (loginRes.status === 401) throw new Error('Wrong email or password.');
     if (!loginRes.ok) throw new Error(`Login failed (${loginRes.status})`);
-    const { token } = (await loginRes.json()) as { token: string };
-    const rootKey = await unwrapRootKey(JSON.parse(params.wrappedKey) as WrappedRootKey, password);
+    const { token, wrappedKey } = (await loginRes.json()) as LoginResponse;
+    const rootKey = await unwrapRootKey(JSON.parse(wrappedKey) as WrappedRootKey, password);
     this.persistSession(url, email, token, rootKey);
     await this.syncNow();
   }
@@ -85,7 +99,10 @@ export class CloudSyncService {
     let result: SyncResult = { applied: 0, conflicts: 0 };
     let baseRevision = Math.max(remote.revision, Number(getMeta(this.db, 'cloud_revision') ?? 0));
     if (remote.ciphertext) {
-      result = mergeVaultPlaintext(this.db, await decryptVault(Buffer.from(remote.ciphertext, 'base64'), rootKey));
+      result = mergeVaultPlaintext(
+        this.db,
+        await decryptVault(Buffer.from(remote.ciphertext, 'base64'), rootKey)
+      );
     }
     const ciphertext = (await encryptVault(this.db, rootKey)).toString('base64');
     let put = await this.putVault(url, token, ciphertext, baseRevision + 1);
@@ -93,7 +110,10 @@ export class CloudSyncService {
       // Someone else pushed; pull+merge+retry once.
       const latest = await this.fetchVault(url, token);
       if (latest.ciphertext) {
-        mergeVaultPlaintext(this.db, await decryptVault(Buffer.from(latest.ciphertext, 'base64'), rootKey));
+        mergeVaultPlaintext(
+          this.db,
+          await decryptVault(Buffer.from(latest.ciphertext, 'base64'), rootKey)
+        );
       }
       baseRevision = latest.revision;
       const merged = (await encryptVault(this.db, rootKey)).toString('base64');
@@ -121,14 +141,22 @@ export class CloudSyncService {
     if (this.debounce) clearTimeout(this.debounce);
   }
 
-  private async fetchVault(url: string, token: string): Promise<{ ciphertext: string | null; revision: number }> {
+  private async fetchVault(
+    url: string,
+    token: string
+  ): Promise<{ ciphertext: string | null; revision: number }> {
     const res = await fetch(`${url}/api/vault`, { headers: { authorization: `Bearer ${token}` } });
     if (res.status === 401) throw new Error('Session expired — log in again.');
     if (!res.ok) throw new Error(`Sync failed (${res.status})`);
     return (await res.json()) as { ciphertext: string | null; revision: number };
   }
 
-  private async putVault(url: string, token: string, ciphertext: string, revision: number): Promise<{ status: number; revision?: number }> {
+  private async putVault(
+    url: string,
+    token: string,
+    ciphertext: string,
+    revision: number
+  ): Promise<{ status: number; revision?: number }> {
     const res = await fetch(`${url}/api/vault`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -175,7 +203,9 @@ function protect(value: string): string {
 function unprotect(stored: string | null): string | null {
   if (!stored) return null;
   if (stored.startsWith('safe:')) {
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(stored.slice(5), 'base64')) : null;
+    return safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(Buffer.from(stored.slice(5), 'base64'))
+      : null;
   }
   if (stored.startsWith('plain:')) {
     return Buffer.from(stored.slice(6), 'base64').toString('utf8');
