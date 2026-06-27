@@ -23,7 +23,7 @@ describe('vault allowlist', () => {
       displayName: 'Gmail',
       color: '#ef4444'
     });
-    setServiceLastUrl(db, deviceId, service.id, 'https://mail.google.com/mail/u/0/#inbox');
+    setServiceLastUrl(db, service.id, 'https://mail.google.com/mail/u/0/#inbox');
 
     const plaintext = buildVaultPlaintext(db);
     expect(() => assertVaultHasNoDeniedKeys(plaintext)).not.toThrow();

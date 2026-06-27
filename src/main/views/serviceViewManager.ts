@@ -382,7 +382,7 @@ export class ServiceViewManager {
   private configureWebContents(instance: ServiceInstance, managed: ManagedView): void {
     const contents = managed.view.webContents;
     const persist = (url: string): void => {
-      setServiceLastUrl(this.db, this.deviceId, instance.id, url);
+      setServiceLastUrl(this.db, instance.id, url);
       if (managed.tabId) {
         setTabUrlTitle(this.db, managed.tabId, url, contents.getTitle() || null);
       }

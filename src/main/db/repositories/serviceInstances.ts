@@ -180,13 +180,6 @@ export function tombstoneServiceInstance(
   })();
 }
 
-export function setServiceLastUrl(
-  db: Database.Database,
-  deviceId: string,
-  id: string,
-  lastUrl: string
-): void {
-  db.prepare(
-    'UPDATE service_instances SET last_url = ?, updated_at = ?, rev = rev + 1, origin_device = ? WHERE id = ?'
-  ).run(lastUrl, Date.now(), deviceId, id);
+export function setServiceLastUrl(db: Database.Database, id: string, lastUrl: string): void {
+  db.prepare('UPDATE service_instances SET last_url = ? WHERE id = ?').run(lastUrl, id);
 }
