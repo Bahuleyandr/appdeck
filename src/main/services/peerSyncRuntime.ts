@@ -1,6 +1,12 @@
 import type Database from 'better-sqlite3';
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual
+} from 'node:crypto';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { hostname } from 'node:os';
 import type {
   PeerSyncPeer,
@@ -76,7 +82,16 @@ export class PeerSyncRuntime {
         response.end(JSON.stringify({ error: 'not_found' }));
         return;
       }
-      const envelope = exportEncryptedPeerVault(this.db, ensurePeerSecret(this.db));
+      const secret = ensurePeerSecret(this.db);
+      // The shared secret (delivered out-of-band in the endpoint's #fragment) is required as a
+      // bearer token. Without it a network/tailnet scanner gets 401 instead of the encrypted blob —
+      // the same secret then decrypts the payload, so only an authorized peer ever sees ciphertext.
+      if (!hasValidBearer(request, secret)) {
+        response.writeHead(401, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      const envelope = exportEncryptedPeerVault(this.db, secret);
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(envelope));
     });
@@ -115,7 +130,10 @@ export class PeerSyncRuntime {
     }
     try {
       const response = await this.fetcher(`${endpoint.url}/api/peer/vault`, {
-        headers: { accept: 'application/json' }
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${endpoint.secret}`
+        }
       });
       if (!response.ok) {
         throw new Error(`Peer returned HTTP ${response.status}`);
@@ -134,6 +152,16 @@ export class PeerSyncRuntime {
       };
     }
   }
+}
+
+function hasValidBearer(request: IncomingMessage, secret: string): boolean {
+  const header = request.headers.authorization;
+  if (!header) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match?.[1]) return false;
+  const provided = Buffer.from(match[1]);
+  const expected = Buffer.from(secret);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
 
 function parsePeerEndpoint(endpoint: string): { url: string; secret: string } {

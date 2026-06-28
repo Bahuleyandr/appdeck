@@ -124,7 +124,12 @@ if (!gotLock) {
     updaterService.init();
     linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
     peerSyncRuntime = new PeerSyncRuntime(db);
-    void peerSyncRuntime.startServer().catch(() => undefined);
+    // Serving exposes a listening socket on the LAN/tailnet, so it's opt-in (default off). Pulling
+    // from peers is an outbound fetch and needs no local server. The share server requires a bearer
+    // secret even when on. Toggle via the `peer_sync_serve` setting.
+    if (getBoolSetting(db, 'peer_sync_serve')) {
+      void peerSyncRuntime.startServer().catch(() => undefined);
+    }
     automationRuntime = new AutomationRuntime({
       db,
       viewManager,
@@ -195,6 +200,11 @@ if (!gotLock) {
         trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
         lockService?.setIdleTimeoutMinutes(getSetting(db, 'auto_lock_minutes'));
         registerHotkey();
+        if (getBoolSetting(db, 'peer_sync_serve')) {
+          void peerSyncRuntime?.startServer().catch(() => undefined);
+        } else {
+          peerSyncRuntime?.dispose();
+        }
       }
     });
 

@@ -356,11 +356,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!selectedWorkspaceId) return;
     const limit = mode === 'single' ? 1 : mode === 'split' ? 2 : 4;
     const activeServices = services.filter((service) => !service.disabled);
-    const next = selectedServiceIds.length
-      ? selectedServiceIds
-          .filter((id) => activeServices.some((service) => service.id === id))
-          .slice(0, limit)
-      : activeServices.slice(0, limit).map((service) => service.id);
+    // Keep the current selection, then top up empty panes from the remaining active services so
+    // split/grid actually render multiple panes even when only one service was selected.
+    const next = activeServices
+      .map((service) => service.id)
+      .filter((id) => selectedServiceIds.includes(id));
+    for (const service of activeServices) {
+      if (next.length >= limit) break;
+      if (!next.includes(service.id)) next.push(service.id);
+    }
+    next.splice(limit);
     await api.layout.set(selectedWorkspaceId, mode, next, {});
     set({ layoutMode: mode, selectedServiceIds: next });
   },
@@ -429,6 +434,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     return result.ok;
   },
   lock: async () => {
+    // With no passphrase set, the main process can't truly lock and unlock would accept anything.
+    // Show the lock screen in setup mode instead so the user creates a passphrase first.
+    if (!get().lockConfigured) {
+      set({ locked: true });
+      return;
+    }
     await api.lock.lock();
     set({ locked: true });
   },
