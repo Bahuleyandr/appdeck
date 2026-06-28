@@ -1,5 +1,19 @@
-import { PanelLeftClose, PanelLeftOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  Bell,
+  BellOff,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Sun,
+  Trash2,
+  ZoomIn,
+  ZoomOut
+} from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
 
 const WIDTH_KEY = 'appdeck.sidebar.width';
@@ -19,16 +33,22 @@ export function ServiceRail(): JSX.Element {
   const {
     services,
     selectedServiceIds,
+    serviceStates,
     unread,
     selectService,
     setCatalogOpen,
     deleteService,
-    updateService
+    updateService,
+    reorderServices,
+    sleepService,
+    wakeService
   } = useAppStore();
   const [width, setWidth] = useState(readWidth);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragging = useRef(false);
 
   useEffect(() => {
@@ -37,6 +57,19 @@ export function ServiceRail(): JSX.Element {
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (): void => setMenu(null);
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setMenu(null);
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
 
   const startResize = (event: ReactPointerEvent): void => {
     event.preventDefault();
@@ -57,6 +90,7 @@ export function ServiceRail(): JSX.Element {
   };
 
   const startRename = (id: string, name: string): void => {
+    setMenu(null);
     setEditingId(id);
     setDraft(name);
   };
@@ -64,6 +98,29 @@ export function ServiceRail(): JSX.Element {
     const name = draft.trim();
     setEditingId(null);
     if (name && name !== current) await updateService(id, { display_name: name });
+  };
+
+  const dropOn = (targetId: string): void => {
+    if (!dragId || dragId === targetId) {
+      setDragId(null);
+      return;
+    }
+    const ids = services.map((service) => service.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    setDragId(null);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragId);
+    void reorderServices(ids);
+  };
+
+  const adjustZoom = (id: string, delta: number | null): void => {
+    const current = services.find((service) => service.id === id)?.zoom_factor ?? 1;
+    const next = delta === null ? 1 : Math.min(2.5, Math.max(0.5, Math.round((current + delta) * 10) / 10));
+    void api.services.setZoom(id, next);
+    void updateService(id, { zoom_factor: next });
+    setMenu(null);
   };
 
   if (collapsed) {
@@ -116,6 +173,8 @@ export function ServiceRail(): JSX.Element {
     );
   }
 
+  const menuService = menu ? services.find((service) => service.id === menu.id) : undefined;
+
   return (
     <aside
       className="relative flex h-full shrink-0 flex-col border-r border-line bg-panel"
@@ -156,9 +215,17 @@ export function ServiceRail(): JSX.Element {
           return (
             <div
               key={service.id}
+              draggable={!editing}
+              onDragStart={() => setDragId(service.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => dropOn(service.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ id: service.id, x: event.clientX, y: event.clientY });
+              }}
               className={`group relative mb-0.5 flex h-11 items-center gap-2.5 rounded-lg px-2 transition-colors ${
                 selected ? 'bg-elevated' : service.disabled ? 'opacity-40' : 'hover:bg-elevated/50'
-              }`}
+              } ${dragId === service.id ? 'opacity-50' : ''}`}
             >
               {selected && (
                 <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-accent" />
@@ -194,6 +261,7 @@ export function ServiceRail(): JSX.Element {
                   >
                     {service.display_name}
                   </span>
+                  {service.muted && <BellOff size={12} className="shrink-0 text-muted" />}
                   {service.disabled && (
                     <span className="rounded bg-elevated px-1.5 py-0.5 text-[11px] text-muted">
                       off
@@ -233,6 +301,92 @@ export function ServiceRail(): JSX.Element {
         onPointerDown={startResize}
         title="Drag to resize"
       />
+      {menu && menuService && (
+        <div
+          className="fixed z-[90] w-44 overflow-hidden rounded-md border border-line bg-panel py-1 text-sm shadow-2xl"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MenuItem
+            icon={<Pencil size={14} />}
+            label="Rename"
+            onClick={() => startRename(menuService.id, menuService.display_name)}
+          />
+          <MenuItem
+            icon={menuService.muted ? <Bell size={14} /> : <BellOff size={14} />}
+            label={menuService.muted ? 'Unmute' : 'Mute'}
+            onClick={() => {
+              void updateService(menuService.id, { muted: !menuService.muted });
+              setMenu(null);
+            }}
+          />
+          <MenuItem
+            icon={
+              serviceStates[menuService.id] === 'sleeping' ? <Sun size={14} /> : <Moon size={14} />
+            }
+            label={serviceStates[menuService.id] === 'sleeping' ? 'Wake' : 'Sleep'}
+            onClick={() => {
+              if (serviceStates[menuService.id] === 'sleeping') void wakeService(menuService.id);
+              else void sleepService(menuService.id);
+              setMenu(null);
+            }}
+          />
+          <MenuItem
+            icon={<RefreshCw size={14} />}
+            label="Reload"
+            onClick={() => {
+              void api.services.reload(menuService.id);
+              setMenu(null);
+            }}
+          />
+          <div className="my-1 h-px bg-line" />
+          <MenuItem
+            icon={<ZoomIn size={14} />}
+            label="Zoom in"
+            onClick={() => adjustZoom(menuService.id, 0.1)}
+          />
+          <MenuItem
+            icon={<ZoomOut size={14} />}
+            label="Zoom out"
+            onClick={() => adjustZoom(menuService.id, -0.1)}
+          />
+          <MenuItem icon={null} label="Reset zoom" onClick={() => adjustZoom(menuService.id, null)} />
+          <div className="my-1 h-px bg-line" />
+          <MenuItem
+            icon={<Trash2 size={14} />}
+            label="Remove"
+            danger
+            onClick={() => {
+              void deleteService(menuService.id);
+              setMenu(null);
+            }}
+          />
+        </div>
+      )}
     </aside>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  danger
+}: {
+  icon: JSX.Element | null;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left hover:bg-elevated ${
+        danger ? 'text-red-300' : 'text-ink/90'
+      }`}
+      onClick={onClick}
+    >
+      <span className="flex w-4 justify-center text-muted">{icon}</span>
+      {label}
+    </button>
   );
 }

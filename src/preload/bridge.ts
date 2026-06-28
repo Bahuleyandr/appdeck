@@ -128,6 +128,8 @@ const allowedInvokeChannels = new Set<string>([
   'ai:clearKey',
   'ai:brief',
   'ai:triage',
+  'ai:draftReply',
+  'ai:suggestMutes',
   'aiPrompt:list',
   'aiPrompt:upsert',
   'aiPrompt:delete',

@@ -89,6 +89,8 @@ export class ServiceViewManager {
   private readonly views = new Map<string, ManagedView>();
   private readonly pendingNavigations = new Map<string, string>();
   private readonly configuredSessions = new WeakSet<Session>();
+  // Recent crash timestamps per viewId, so a repeatedly-crashing pane stops auto-reloading.
+  private readonly crashTimes = new Map<string, number[]>();
   private activeInstanceId: string | null = null;
   private visibleIds = new Set<string>();
 
@@ -477,9 +479,36 @@ export class ServiceViewManager {
     contents.on('before-input-event', () => this.markActive(managed.viewId));
     contents.on('did-navigate', (_event, url) => persist(url));
     contents.on('did-navigate-in-page', (_event, url) => persist(url));
-    contents.on('render-process-gone', () => {
-      this.destroyView(managed.viewId);
-      this.emitState(instance.id, 'crashed');
+    contents.on('render-process-gone', (_event, details) => {
+      // Ignore intentional teardown (sleep/close removes the view first; a clean exit isn't a crash).
+      if (details.reason === 'clean-exit' || !this.views.has(managed.viewId)) {
+        return;
+      }
+      const WINDOW_MS = 60_000;
+      const MAX_AUTO_RELOADS = 2;
+      const recent = (this.crashTimes.get(managed.viewId) ?? []).filter(
+        (when) => Date.now() - when < WINDOW_MS
+      );
+      recent.push(Date.now());
+      this.crashTimes.set(managed.viewId, recent);
+      if (recent.length <= MAX_AUTO_RELOADS) {
+        // Transient crash: show a loading state and self-heal after a short delay.
+        this.emitState(instance.id, 'loading');
+        setTimeout(() => {
+          const stillManaged = this.views.get(managed.viewId);
+          if (!stillManaged) return;
+          try {
+            stillManaged.view.webContents.reload();
+          } catch {
+            this.destroyView(managed.viewId);
+            this.emitState(instance.id, 'crashed');
+          }
+        }, 1000);
+      } else {
+        // Crash loop: stop auto-reloading and let the user wake it manually.
+        this.destroyView(managed.viewId);
+        this.emitState(instance.id, 'crashed');
+      }
     });
     contents.on('will-navigate', (event, url) => {
       if (!this.isAllowedUrl(instance.id, url)) {

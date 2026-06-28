@@ -118,6 +118,8 @@ interface AppState {
   deleteProfile: (id: string) => Promise<void>;
   selectService: (serviceId: string) => Promise<void>;
   setLayoutMode: (mode: Layout['mode']) => Promise<void>;
+  reorderServices: (orderedIds: string[]) => Promise<void>;
+  reorderWorkspaces: (orderedIds: string[]) => Promise<void>;
   createService: (
     recipe: RecipeCatalogItem,
     displayName?: string,
@@ -368,6 +370,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     next.splice(limit);
     await api.layout.set(selectedWorkspaceId, mode, next, {});
     set({ layoutMode: mode, selectedServiceIds: next });
+  },
+  reorderServices: async (orderedIds) => {
+    const { selectedWorkspaceId, services } = get();
+    if (!selectedWorkspaceId) return;
+    const byId = new Map(services.map((service) => [service.id, service]));
+    const next = orderedIds
+      .map((id) => byId.get(id))
+      .filter((service): service is NonNullable<typeof service> => Boolean(service));
+    set({ services: next }); // optimistic; refresh reconciles ordering with the DB
+    await api.services.reorder(selectedWorkspaceId, orderedIds);
+    await get().refreshServices();
+  },
+  reorderWorkspaces: async (orderedIds) => {
+    const byId = new Map(get().workspaces.map((workspace) => [workspace.id, workspace]));
+    const next = orderedIds
+      .map((id) => byId.get(id))
+      .filter((workspace): workspace is NonNullable<typeof workspace> => Boolean(workspace));
+    set({ workspaces: next });
+    await api.workspaces.reorder(orderedIds);
   },
   createService: async (recipe, displayName, profileId) => {
     const workspaceId = get().selectedWorkspaceId;

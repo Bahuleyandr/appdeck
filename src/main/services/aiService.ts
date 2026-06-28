@@ -169,6 +169,72 @@ export class AiService {
     return { text };
   }
 
+  async draftReply(notificationId: number, instruction?: string): Promise<AiPromptRunResult> {
+    const notification = this.recentNotifications().find((entry) => entry.id === notificationId);
+    if (!notification) {
+      throw new Error('Notification not found.');
+    }
+    const service = getServiceInstance(this.db, notification.instance_id);
+    const text = await this.complete({
+      system:
+        'You draft a reply the user can paste into their chat or email app. Output ONLY the reply text — no preamble, ' +
+        'no surrounding quotes, no signature unless asked. Keep a natural, concise tone that matches the message. ' +
+        'If the message clearly needs no reply, say so in one short line.',
+      user:
+        `Service: ${service?.display_name ?? 'Unknown'}\n` +
+        `From / subject: ${notification.title}\n` +
+        `Message: ${notification.body}\n\n` +
+        (instruction?.trim() ? `Extra instruction from the user: ${instruction.trim()}\n\n` : '') +
+        'Write the reply:',
+      json: false
+    });
+    return { text };
+  }
+
+  async suggestMutes(): Promise<Array<{ instanceId: string; reason: string }>> {
+    const notifications = this.recentNotifications();
+    if (!notifications.length) {
+      return [];
+    }
+    const byService = new Map<string, { name: string; count: number; samples: string[] }>();
+    for (const notification of notifications) {
+      const service = getServiceInstance(this.db, notification.instance_id);
+      const entry = byService.get(notification.instance_id) ?? {
+        name: service?.display_name ?? 'Unknown',
+        count: 0,
+        samples: []
+      };
+      entry.count += 1;
+      if (entry.samples.length < 3) {
+        entry.samples.push(`${notification.title}: ${notification.body}`.slice(0, 120));
+      }
+      byService.set(notification.instance_id, entry);
+    }
+    const user = [...byService.entries()]
+      .map(
+        ([id, entry]) =>
+          `Service ${id} "${entry.name}" (${entry.count} recent): ${entry.samples.join(' | ')}`
+      )
+      .join('\n');
+    const text = await this.complete({
+      system:
+        'You help the user cut notification noise. From the per-service summaries, identify services whose ' +
+        'notifications are low-value or noisy (newsletters, automated alerts, social noise) and worth muting. Be ' +
+        'conservative — only flag clearly noisy ones, never personal conversations. Return strict JSON only: ' +
+        '{"items":[{"instanceId":"<exact id from input>","reason":"short"}]}.',
+      user,
+      json: true
+    });
+    try {
+      const parsed = JSON.parse(text) as {
+        items: Array<{ instanceId: string; reason: string }>;
+      };
+      return parsed.items.filter((item) => byService.has(item.instanceId));
+    } catch {
+      return [];
+    }
+  }
+
   private async complete(input: { system: string; user: string; json: boolean }): Promise<string> {
     const status = this.status();
     if (!status.configured) {

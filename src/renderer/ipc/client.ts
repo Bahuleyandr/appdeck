@@ -366,7 +366,11 @@ export const api = {
     ) => invoke<void>('ai:configure', typeof config === 'string' ? { apiKey: config } : config),
     clearKey: () => invoke<void>('ai:clearKey'),
     brief: () => invoke<AiBrief>('ai:brief'),
-    triage: () => invoke<TriageItem[]>('ai:triage')
+    triage: () => invoke<TriageItem[]>('ai:triage'),
+    draftReply: (notificationId: number, instruction?: string) =>
+      invoke<AiPromptRunResult>('ai:draftReply', { notificationId, instruction }),
+    suggestMutes: () =>
+      invoke<Array<{ instanceId: string; reason: string }>>('ai:suggestMutes')
   },
   aiPrompts: {
     list: () => invoke<AiPrompt[]>('aiPrompt:list'),

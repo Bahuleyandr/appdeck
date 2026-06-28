@@ -1,0 +1,39 @@
+name: Release
+
+# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build signed installers
+# for Windows, macOS, and Linux and upload them to a GitHub Release. The release is created as a
+# DRAFT (see electron-builder.yml publish.releaseType) so you review and publish it manually.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build and publish installers
+        run: npm run release
+        env:
+          # Provided automatically by Actions; lets electron-updater's github provider upload assets.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional code-signing secrets. electron-builder reads these automatically when set;
+          # leave unset for unsigned builds. CSC_LINK = base64 of a .pfx (Win) or .p12 (mac).
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

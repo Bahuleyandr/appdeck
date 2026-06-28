@@ -715,6 +715,11 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     },
     'ai:brief': () => ctx.aiService.brief(),
     'ai:triage': () => ctx.aiService.triage(),
+    'ai:draftReply': (payload) => {
+      const input = parseIpcPayload('ai:draftReply', payload);
+      return ctx.aiService.draftReply(input.notificationId, input.instruction);
+    },
+    'ai:suggestMutes': () => ctx.aiService.suggestMutes(),
     'aiPrompt:list': () => listAiPrompts(ctx.db),
     'aiPrompt:upsert': (payload) => {
       const input = parseIpcPayload('aiPrompt:upsert', payload);

@@ -33,4 +33,5 @@ publish:
   provider: github
   owner: Bahuleyandr
   repo: appdeck
-  releaseType: release
+  # CI publishes a draft release per tag; review the assets, then publish manually.
+  releaseType: draft

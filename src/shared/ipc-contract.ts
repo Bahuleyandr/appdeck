@@ -459,6 +459,11 @@ export const ipcSchemas = {
   'ai:clearKey': z.void(),
   'ai:brief': z.void(),
   'ai:triage': z.void(),
+  'ai:draftReply': z.object({
+    notificationId: z.number().int(),
+    instruction: z.string().optional()
+  }),
+  'ai:suggestMutes': z.void(),
   'aiPrompt:list': z.void(),
   'aiPrompt:upsert': z.object({
     id: z.string().optional(),
