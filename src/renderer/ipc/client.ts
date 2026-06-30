@@ -58,6 +58,7 @@ export type SettingsMap = {
   global_dnd: string;
   tracker_block: string;
   close_to_tray: string;
+  minimize_to_tray: string;
   global_hotkey: string;
   onboarded: string;
   launch_at_login: string;

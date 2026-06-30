@@ -30,6 +30,7 @@ import { UpdaterService } from './services/updater.js';
 import { CloudSyncService } from './sync/cloudSync.js';
 import { FileSyncService } from './sync/fileSync.js';
 import { ServiceViewManager } from './views/serviceViewManager.js';
+import { restoreWindowForUserAttention } from './windows/attention.js';
 import { createMainWindow } from './windows/mainWindow.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -39,6 +40,7 @@ let lockService: AppLockService | null = null;
 let linkRouter: LinkRouter | null = null;
 let automationRuntime: AutomationRuntime | null = null;
 let peerSyncRuntime: PeerSyncRuntime | null = null;
+let notificationService: NotificationService | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let notificationPruneTimer: NodeJS.Timeout | null = null;
@@ -46,6 +48,9 @@ let notificationPruneTimer: NodeJS.Timeout | null = null;
 const NOTIFICATION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 app.setAsDefaultProtocolClient(APP_PROTOCOL);
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.appdeck.app');
+}
 
 const gotLock = app.requestSingleInstanceLock();
 
@@ -110,10 +115,13 @@ if (!gotLock) {
     );
 
     const badgeService = new BadgeService(() => mainWindow);
-    const notificationService = new NotificationService(
+    notificationService = new NotificationService(
       db,
       () => mainWindow,
-      (instanceId) => sendPush('event:notification-clicked', { instanceId }),
+      (instanceId) => {
+        restoreWindowForUserAttention(mainWindow);
+        sendPush('event:notification-clicked', { instanceId });
+      },
       () => getBoolSetting(db, 'global_dnd')
     );
     const fileSyncService = new FileSyncService(db);
@@ -210,6 +218,16 @@ if (!gotLock) {
 
     const wireWindow = (window: BrowserWindow): void => {
       window.on('focus', () => lockService?.bumpIdleTimer());
+      (
+        window as BrowserWindow & {
+          on(event: 'minimize', listener: (event: Electron.Event) => void): BrowserWindow;
+        }
+      ).on('minimize', (event: Electron.Event) => {
+        if (getBoolSetting(db, 'minimize_to_tray')) {
+          event.preventDefault();
+          window.hide();
+        }
+      });
       window.on('close', (event) => {
         if (!isQuitting && getBoolSetting(db, 'close_to_tray')) {
           event.preventDefault();
@@ -258,6 +276,8 @@ if (!gotLock) {
     app.on('before-quit', () => {
       isQuitting = true;
       sleepManager?.stop();
+      notificationService?.dispose();
+      notificationService = null;
       automationRuntime?.dispose();
       automationRuntime = null;
       peerSyncRuntime?.dispose();

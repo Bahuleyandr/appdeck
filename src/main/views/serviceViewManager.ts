@@ -82,6 +82,23 @@ interface ManagedView {
   view: WebContentsView;
   attached: boolean;
   lastActiveAt: number;
+  hiddenAt: number | null;
+}
+
+export const HIDDEN_VIEW_MEMORY_TRIM_MS = 5 * 60_000;
+
+export function shouldTrimHiddenView(
+  state: { attached: boolean; hiddenAt: number | null; active: boolean; audible: boolean },
+  now = Date.now(),
+  maxHiddenMs = HIDDEN_VIEW_MEMORY_TRIM_MS
+): boolean {
+  return (
+    !state.attached &&
+    state.hiddenAt !== null &&
+    !state.active &&
+    !state.audible &&
+    now - state.hiddenAt >= maxHiddenMs
+  );
 }
 
 export class ServiceViewManager {
@@ -113,7 +130,7 @@ export class ServiceViewManager {
   setBounds(entries: Array<{ viewId: string; rect: Rect }>, visibleIds: string[]): void {
     this.visibleIds = new Set(visibleIds);
     const byId = new Map(entries.map((entry) => [entry.viewId, normalizeRect(entry.rect)]));
-    this.detachHiddenViews();
+    this.detachHiddenViews(Date.now());
     for (const viewId of visibleIds) {
       const rect = byId.get(viewId);
       if (!rect || rect.width <= 0 || rect.height <= 0) {
@@ -253,6 +270,33 @@ export class ServiceViewManager {
     }
   }
 
+  trimHiddenViews(maxHiddenMs = HIDDEN_VIEW_MEMORY_TRIM_MS, now = Date.now()): number {
+    let trimmed = 0;
+    const affectedInstances = new Set<string>();
+    for (const managed of [...this.views.values()]) {
+      const active = this.activeInstanceId === managed.instanceId;
+      const audible = managed.view.webContents.isCurrentlyAudible();
+      if (
+        !shouldTrimHiddenView(
+          { attached: managed.attached, hiddenAt: managed.hiddenAt, active, audible },
+          now,
+          maxHiddenMs
+        )
+      ) {
+        continue;
+      }
+      affectedInstances.add(managed.instanceId);
+      this.destroyView(managed.viewId);
+      trimmed += 1;
+    }
+    for (const instanceId of affectedInstances) {
+      if (!this.viewsForInstance(instanceId).length) {
+        this.emitState(instanceId, 'sleeping');
+      }
+    }
+    return trimmed;
+  }
+
   private contentsFor(idOrViewId: string): Electron.WebContents | undefined {
     const viewId = this.toViewId(idOrViewId);
     return viewId ? this.views.get(viewId)?.view.webContents : undefined;
@@ -315,7 +359,8 @@ export class ServiceViewManager {
       tabId,
       view,
       attached: false,
-      lastActiveAt: Date.now()
+      lastActiveAt: Date.now(),
+      hiddenAt: null
     };
     this.views.set(viewId, managed);
     this.configureWebContents(instance, managed);
@@ -569,9 +614,13 @@ export class ServiceViewManager {
     }
     this.window.contentView.addChildView(managed.view);
     managed.attached = true;
+    managed.hiddenAt = null;
   }
 
   private detach(managed: ManagedView): void {
+    if (managed.hiddenAt === null) {
+      managed.hiddenAt = Date.now();
+    }
     managed.attached = false;
     if (!this.window || this.window.isDestroyed()) {
       return;
@@ -579,9 +628,12 @@ export class ServiceViewManager {
     this.window.contentView.removeChildView(managed.view);
   }
 
-  private detachHiddenViews(): void {
+  private detachHiddenViews(now: number): void {
     for (const managed of this.views.values()) {
       if (!this.visibleIds.has(managed.viewId)) {
+        if (managed.hiddenAt === null) {
+          managed.hiddenAt = now;
+        }
         this.detach(managed);
       }
     }

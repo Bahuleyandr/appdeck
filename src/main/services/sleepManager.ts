@@ -29,6 +29,7 @@ export class SleepManager {
 
   tick(): void {
     const now = Date.now();
+    this.viewManager.trimHiddenViews(undefined, now);
     for (const instance of listServiceInstances(this.db)) {
       const idleMinutes = instance.sleep_policy.idleMinutes ?? DEFAULT_SLEEP_IDLE_MINUTES;
       if (idleMinutes === null) {

@@ -500,6 +500,7 @@ export const ipcSchemas = {
       'global_dnd',
       'tracker_block',
       'close_to_tray',
+      'minimize_to_tray',
       'global_hotkey',
       'onboarded',
       'launch_at_login',

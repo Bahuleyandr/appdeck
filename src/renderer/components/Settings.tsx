@@ -124,6 +124,11 @@ export function Settings(): JSX.Element | null {
             value={settings.close_to_tray === 'true'}
             onChange={(v) => void setSettingValue('close_to_tray', String(v))}
           />
+          <Toggle
+            label="Minimize to tray"
+            value={settings.minimize_to_tray === 'true'}
+            onChange={(v) => void setSettingValue('minimize_to_tray', String(v))}
+          />
 
           <section>
             <div className="mb-2 text-sm font-semibold">Global hotkey</div>

@@ -7,6 +7,7 @@ export type SettingKey =
   | 'global_dnd'
   | 'tracker_block'
   | 'close_to_tray'
+  | 'minimize_to_tray'
   | 'global_hotkey'
   | 'onboarded'
   | 'launch_at_login'
@@ -20,6 +21,7 @@ const SETTING_KEYS: SettingKey[] = [
   'global_dnd',
   'tracker_block',
   'close_to_tray',
+  'minimize_to_tray',
   'global_hotkey',
   'onboarded',
   'launch_at_login',
@@ -34,6 +36,7 @@ const DEFAULTS: Record<SettingKey, string> = {
   global_dnd: 'false',
   tracker_block: 'false',
   close_to_tray: 'true',
+  minimize_to_tray: 'false',
   global_hotkey: '',
   onboarded: 'false',
   launch_at_login: 'false',

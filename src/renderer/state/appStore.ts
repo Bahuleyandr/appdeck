@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: SettingsMap = {
   global_dnd: 'false',
   tracker_block: 'false',
   close_to_tray: 'true',
+  minimize_to_tray: 'false',
   global_hotkey: '',
   onboarded: 'false',
   launch_at_login: 'false',
