@@ -346,11 +346,13 @@ export const api = {
     query: (q: string) => invoke<PaletteItem[]>('palette:query', { q })
   },
   notifications: {
-    list: (limit?: number, unreadOnly?: boolean) =>
+    list: (limit?: number, unreadOnly?: boolean, beforeId?: number) =>
       invoke<NotificationRecord[]>(
         'notification:list',
-        limit || unreadOnly ? { limit, unreadOnly } : undefined
+        limit || unreadOnly || beforeId ? { limit, unreadOnly, beforeId } : undefined
       ),
+    markSeen: () => invoke<void>('notification:markSeen'),
+    lastSeen: () => invoke<{ at: number | null }>('notification:lastSeen'),
     search: (q: string) => invoke<NotificationRecord[]>('notification:search', { q }),
     markRead: (id: number) => invoke<void>('notification:markRead', { id }),
     markAllRead: () => invoke<void>('notification:markAllRead'),

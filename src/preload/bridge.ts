@@ -119,6 +119,8 @@ const allowedInvokeChannels = new Set<string>([
   'task:reorder',
   'palette:query',
   'notification:list',
+  'notification:markSeen',
+  'notification:lastSeen',
   'notification:search',
   'notification:markRead',
   'notification:markAllRead',

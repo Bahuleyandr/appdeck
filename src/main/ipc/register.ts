@@ -46,9 +46,11 @@ import {
 } from '../db/repositories/workspaces.js';
 import {
   clearNotifications,
+  inboxLastSeenAt,
   insertNotification,
   listNotifications,
   markAllNotificationsRead,
+  markInboxSeen,
   markNotificationRead,
   searchNotifications,
   snoozeNotification,
@@ -695,8 +697,12 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'notification:list': (payload) => {
       const input = parseIpcPayload('notification:list', payload);
-      return listNotifications(ctx.db, input?.limit, input?.unreadOnly);
+      return listNotifications(ctx.db, input?.limit, input?.unreadOnly, input?.beforeId);
     },
+    'notification:markSeen': () => {
+      markInboxSeen(ctx.db);
+    },
+    'notification:lastSeen': () => ({ at: inboxLastSeenAt(ctx.db) }),
     'notification:search': (payload) =>
       searchNotifications(ctx.db, parseIpcPayload('notification:search', payload).q),
     'notification:markRead': (payload) => {

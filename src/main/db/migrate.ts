@@ -5,6 +5,7 @@ import serviceTabsSql from './migrations/0003_service_tabs.sql?raw';
 import personalProSql from './migrations/0004_personal_pro.sql?raw';
 import moatsSql from './migrations/0005_moats.sql?raw';
 import beyondParitySql from './migrations/0006_beyond_parity.sql?raw';
+import archiveAiSql from './migrations/0007_archive_ai.sql?raw';
 import { DEFAULT_WORKSPACE_NAME } from '../../shared/constants.js';
 import { grandfatherExistingCustomCode } from '../services/customCode.js';
 import { seedRecipeRegistry } from './repositories/recipeRegistry.js';
@@ -15,7 +16,8 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
   { version: 3, sql: serviceTabsSql },
   { version: 4, sql: personalProSql },
   { version: 5, sql: moatsSql },
-  { version: 6, sql: beyondParitySql }
+  { version: 6, sql: beyondParitySql },
+  { version: 7, sql: archiveAiSql }
 ];
 
 function tableExists(db: Database.Database, tableName: string): boolean {

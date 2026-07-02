@@ -439,9 +439,12 @@ export const ipcSchemas = {
   'notification:list': z
     .object({
       limit: z.number().int().positive().max(500).optional(),
-      unreadOnly: z.boolean().optional()
+      unreadOnly: z.boolean().optional(),
+      beforeId: z.number().int().positive().optional()
     })
     .optional(),
+  'notification:markSeen': z.void(),
+  'notification:lastSeen': z.void(),
   'notification:search': z.object({ q: z.string() }),
   'notification:markRead': z.object({ id: z.number().int().positive() }),
   'notification:markAllRead': z.void(),
