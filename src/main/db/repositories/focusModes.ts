@@ -75,10 +75,9 @@ export function deleteFocusMode(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM focus_modes WHERE id = ?').run(id);
 }
 
-export function focusModeStatus(db: Database.Database): FocusModeStatus {
-  const now = new Date();
+export function focusModeStatus(db: Database.Database, now = new Date()): FocusModeStatus {
   const modes = listFocusModes(db).filter((mode) => mode.enabled);
-  const activeMode = modes.find((mode) => isActive(mode.schedule, now)) ?? null;
+  const activeMode = activeFocusMode(db, now);
   const nextMode =
     activeMode ??
     modes
@@ -87,6 +86,67 @@ export function focusModeStatus(db: Database.Database): FocusModeStatus {
       .sort((a, b) => Number(a.next) - Number(b.next))[0]?.mode ??
     null;
   return { activeMode, nextMode, now: now.getTime() };
+}
+
+export function activeFocusMode(db: Database.Database, now = new Date()): FocusMode | null {
+  return (
+    listFocusModes(db)
+      .filter((mode) => mode.enabled)
+      .find((mode) => isActive(mode.schedule, now)) ?? null
+  );
+}
+
+// A workspace-bound mode only governs services that are members of that workspace.
+function focusModeAppliesToService(
+  db: Database.Database,
+  mode: FocusMode,
+  instanceId: string
+): boolean {
+  if (!mode.workspace_id) {
+    return true;
+  }
+  const row = db
+    .prepare(
+      'SELECT 1 AS hit FROM workspace_services WHERE workspace_id = ? AND service_instance_id = ? AND deleted_at IS NULL'
+    )
+    .get(mode.workspace_id, instanceId) as { hit: number } | undefined;
+  return Boolean(row);
+}
+
+/**
+ * Whether the active focus mode allows an OS notification for this service right now.
+ * blockedServiceIds always wins; allowedServiceIds punches through muteNotifications.
+ */
+export function focusNotificationDecision(
+  db: Database.Database,
+  instanceId: string,
+  now = new Date()
+): 'allow' | 'block' {
+  const mode = activeFocusMode(db, now);
+  if (!mode || !focusModeAppliesToService(db, mode, instanceId)) {
+    return 'allow';
+  }
+  if (mode.settings.blockedServiceIds?.includes(instanceId)) {
+    return 'block';
+  }
+  if (mode.settings.muteNotifications) {
+    return mode.settings.allowedServiceIds?.includes(instanceId) ? 'allow' : 'block';
+  }
+  return 'allow';
+}
+
+/** Idle-minutes cap imposed by the active focus mode, or null when no cap applies. */
+export function focusSleepIdleOverride(
+  db: Database.Database,
+  instanceId: string,
+  now = new Date()
+): number | null {
+  const mode = activeFocusMode(db, now);
+  if (!mode || !focusModeAppliesToService(db, mode, instanceId)) {
+    return null;
+  }
+  const minutes = mode.settings.sleepIdleMinutes;
+  return typeof minutes === 'number' && minutes > 0 ? minutes : null;
 }
 
 function isActive(schedule: FocusMode['schedule'], now: Date): boolean {

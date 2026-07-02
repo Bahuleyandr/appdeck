@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { DEFAULT_SLEEP_IDLE_MINUTES } from '../../shared/constants.js';
+import { focusSleepIdleOverride } from '../db/repositories/focusModes.js';
 import { listServiceInstances } from '../db/repositories/serviceInstances.js';
 import { ServiceViewManager } from '../views/serviceViewManager.js';
 
@@ -31,10 +32,17 @@ export class SleepManager {
     const now = Date.now();
     this.viewManager.trimHiddenViews(undefined, now);
     for (const instance of listServiceInstances(this.db)) {
-      const idleMinutes = instance.sleep_policy.idleMinutes ?? DEFAULT_SLEEP_IDLE_MINUTES;
+      // An explicit `idleMinutes: null` means never-sleep and wins even over focus-mode
+      // overrides; only an *unset* policy falls back to the default.
+      const policyIdleMinutes = instance.sleep_policy.idleMinutes;
+      const idleMinutes =
+        policyIdleMinutes === undefined ? DEFAULT_SLEEP_IDLE_MINUTES : policyIdleMinutes;
       if (idleMinutes === null) {
         continue;
       }
+      const focusIdleMinutes = focusSleepIdleOverride(this.db, instance.id);
+      const effectiveIdleMinutes =
+        focusIdleMinutes === null ? idleMinutes : Math.min(idleMinutes, focusIdleMinutes);
       const lastActiveAt = this.viewManager.getLastActiveAt(instance.id);
       if (!lastActiveAt) {
         continue;
@@ -42,7 +50,7 @@ export class SleepManager {
       if (this.viewManager.isFocused(instance.id) || this.viewManager.isAudible(instance.id)) {
         continue;
       }
-      if (now - lastActiveAt >= idleMinutes * 60_000) {
+      if (now - lastActiveAt >= effectiveIdleMinutes * 60_000) {
         this.viewManager.sleep(instance.id);
       }
     }
