@@ -5,6 +5,9 @@ interface FakeWebContents {
   loadURL: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
   insertCSS: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  setAudioMuted: ReturnType<typeof vi.fn>;
+  setBackgroundThrottling: ReturnType<typeof vi.fn>;
 }
 
 const electronMock = vi.hoisted(() => {
