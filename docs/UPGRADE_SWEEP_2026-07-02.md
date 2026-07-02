@@ -62,6 +62,17 @@ Tests: 15 files/32 tests at audit time → **31 files / 79 unit tests + 3 e2e** 
 `focusEnforcement`, `customCode`, `serviceViewGuards` (Electron-mocked ServiceViewManager),
 `syncRobustness`.
 
+## 2b. Follow-up: next-level batch (same day)
+
+A second batch shipped on `feat/next-level-batch` (spec:
+`docs/superpowers/specs/2026-07-02-next-level-batch-design.md`): **doze tier** (idle unmuted
+services throttle instead of dying — notifications survive, wake is instant), **per-service
+memory accounting** (+ "saved by sleeping" estimate, optional rail badges), **notification
+archive with FTS5 search** (+ retention setting, per-service cap, seen-divider),
+**scheduled AI briefings** via the now-implemented `runAiPrompt` automation action (plus a fix:
+schedule automations used to re-fire every 60 s inside their window), and **release checksums +
+SECURITY.md**. The `runAiPrompt` backlog row below is therefore closed.
+
 ## 3. Remaining backlog (ranked)
 
 | Pri | Item | Evidence / notes |
@@ -69,7 +80,6 @@ Tests: 15 files/32 tests at audit time → **31 files / 79 unit tests + 3 e2e** 
 | P1 | Server rate limiting (signup/login) | `server/src/index.ts` — putVault is capped but signup/login are unthrottled; needs a Cloudflare rate-limit rule or KV/DO window. Document as a required deploy step. |
 | P1 | Code signing + notarization before public release | `electron-builder.yml` supports CSC_* env; unsigned builds train users to click through SmartScreen. Competitor gap: Ferdium ships under a personal cert. |
 | P2 | e2e job in CI | `test:e2e` passes locally; wire xvfb/windows runner into `.github/workflows/ci.yml`. |
-| P2 | Automations `runAiPrompt` action | Schema advertises it (`ipc-contract.ts` automationActionSchema) but `automationRuntime.executeAction` doesn't implement it — inject AiService. |
 | P2 | Portable mode is still a stub | `portableMode.ts` stores `portable_mode_root` that nothing reads. Wire export/vault defaults to it or remove the panel. |
 | P2 | ProControls per-panel data laziness | ~20 eager IPC calls on open (`ProControls.tsx` effect); split panels into files with their own loaders. |
 | P3 | Focus mode `hideMutedServices` | Stored but not consumed by ServiceRail; smallest remaining focus gap. |

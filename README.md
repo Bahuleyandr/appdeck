@@ -6,11 +6,14 @@ Messenger, Gmail, …) as isolated, sleepable, multi-account panes inside one El
 **Highlights**
 
 - Multi-account isolation (one Chromium partition per service instance) + nested tabs per service
-- Workspaces, split/grid tiling, sleep/hibernate, quick switcher
-- Unified **notification inbox** + cross-service ⌘K search
+- Workspaces, split/grid tiling, quick switcher, and **two-tier sleep** — idle services doze
+  (throttled, notifications keep arriving, instant wake) or deep-sleep to free their memory
+- Unified **notification inbox** with a **searchable full-text archive** + cross-service ⌘K search
 - **Local-first, E2EE config sync** via an encrypted vault file — cookies/sessions never sync
 - Link routing, Chrome-extension support, tracker/ad blocking, migration wizard
-- Optional provider-neutral **BYO AI** brief, triage, saved prompts, and task extraction
+- Optional provider-neutral **BYO AI**: scheduled **morning briefing**, inbox triage, saved
+  prompts, and task extraction
+- Per-service **memory accounting** (see what every service costs, and what sleep saves)
 - App lock (Argon2id), tray + global hotkey, light/dark themes, auto-update
 
 ## Free Pro Controls
