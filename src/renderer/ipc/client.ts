@@ -65,6 +65,7 @@ export type SettingsMap = {
   auto_lock_minutes: string;
   portable_mode_enabled: string;
   portable_mode_root: string;
+  peer_sync_serve: string;
 };
 
 async function invoke<T>(channel: IpcChannel, payload?: unknown): Promise<T> {
@@ -120,7 +121,10 @@ export const api = {
       invoke<void>('service:setZoom', { id, zoomFactor }),
     find: (id: string, text: string, forward?: boolean) =>
       invoke<void>('service:find', { id, text, forward }),
-    stopFind: (id: string) => invoke<void>('service:stopFind', { id })
+    stopFind: (id: string) => invoke<void>('service:stopFind', { id }),
+    pendingCustomCode: () =>
+      invoke<Array<{ instanceId: string; displayName: string }>>('service:pendingCustomCode'),
+    approveCustomCode: (id: string) => invoke<void>('service:approveCustomCode', { id })
   },
   views: {
     setBounds: (payload: {
@@ -322,7 +326,7 @@ export const api = {
         configured: boolean;
         folderPath?: string;
         lastSyncAt?: number;
-        pendingConflicts: number;
+        lastError?: string;
       }>('sync:status'),
     configure: (folderPath: string, passphrase: string) =>
       invoke<{ recoveryPhrase: string }>('sync:configure', { folderPath, passphrase }),
@@ -406,7 +410,10 @@ export const api = {
     install: () => invoke<void>('update:install')
   },
   account: {
-    status: () => invoke<{ configured: boolean; email?: string }>('account:status'),
+    status: () =>
+      invoke<{ configured: boolean; email?: string; lastSyncAt?: number; lastError?: string }>(
+        'account:status'
+      ),
     signup: (serverUrl: string, email: string, password: string) =>
       invoke<void>('account:signup', { serverUrl, email, password }),
     login: (serverUrl: string, email: string, password: string) =>

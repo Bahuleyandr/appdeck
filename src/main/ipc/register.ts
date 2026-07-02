@@ -122,6 +122,7 @@ import { listWorkKits } from '../db/repositories/workKits.js';
 import { getAllSettings, setSetting } from '../db/repositories/settings.js';
 import { AppLockService } from '../services/appLock.js';
 import { AiService } from '../services/aiService.js';
+import { approveCustomCode, listPendingCustomCode } from '../services/customCode.js';
 import { AutomationRuntime } from '../services/automationRuntime.js';
 import { BadgeService } from '../services/badges.js';
 import { previewBrowserImport, runBrowserImport } from '../services/browserImport.js';
@@ -230,8 +231,20 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     'service:update': (payload) => {
       const input = parseIpcPayload('service:update', payload);
       const service = updateServiceInstance(ctx.db, ctx.deviceId, input.id, input.patch);
+      // Editing custom code over local IPC is explicit user intent — approve it here so only
+      // code arriving via sync/import stays gated until the user reviews it.
+      if (input.patch.custom_css !== undefined || input.patch.custom_js !== undefined) {
+        approveCustomCode(ctx.db, input.id);
+      }
       ctx.sendDataChanged();
       return service;
+    },
+    'service:pendingCustomCode': () => listPendingCustomCode(ctx.db),
+    'service:approveCustomCode': (payload) => {
+      const input = parseIpcPayload('service:approveCustomCode', payload);
+      approveCustomCode(ctx.db, input.id);
+      ctx.viewManager.reload(input.id);
+      ctx.sendDataChanged();
     },
     'service:delete': async (payload) => {
       const input = parseIpcPayload('service:delete', payload);

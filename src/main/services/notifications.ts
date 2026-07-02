@@ -1,6 +1,7 @@
 import { BrowserWindow, Notification } from 'electron';
 import type Database from 'better-sqlite3';
 import type { FocusRules } from '../../shared/types.js';
+import { focusNotificationDecision } from '../db/repositories/focusModes.js';
 import { getServiceInstance } from '../db/repositories/serviceInstances.js';
 import { getWorkspace } from '../db/repositories/workspaces.js';
 import { listWorkspaceServices } from '../db/repositories/workspaceServices.js';
@@ -42,7 +43,10 @@ export class NotificationService {
     if (!instance || instance.muted) {
       return false;
     }
-    return !this.isWorkspaceDnd(instanceId);
+    if (this.isWorkspaceDnd(instanceId)) {
+      return false;
+    }
+    return focusNotificationDecision(this.db, instanceId) === 'allow';
   }
 
   show(input: NotificationInput): void {

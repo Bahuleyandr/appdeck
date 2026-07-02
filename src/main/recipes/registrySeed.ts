@@ -107,51 +107,29 @@ const BASE_APPS: SeedBase[] = [
   { name: 'Bitwarden', category: 'Productivity', url: 'https://vault.bitwarden.com/' }
 ];
 
-const VARIANTS = [
-  '',
-  'Inbox',
-  'Admin',
-  'Dashboard',
-  'Console',
-  'Workspace',
-  'Personal',
-  'Business',
-  'Team',
-  'Support',
-  'Docs',
-  'Calendar',
-  'Tasks',
-  'Reports',
-  'Analytics',
-  'Mobile',
-  'Lite',
-  'Portal'
-];
+/**
+ * Bump when the curated seed set changes shape. Version 2 removed the synthetic
+ * "name variant" padding (88 apps × 18 labels) in favor of one honest row per app.
+ */
+export const SEED_REGISTRY_VERSION = 2;
 
 export function generateSeedRegistryEntries(now = Date.now()): RecipeRegistryEntry[] {
-  const entries: RecipeRegistryEntry[] = [];
-  for (const app of BASE_APPS) {
-    for (const variant of VARIANTS) {
-      const displayName = variant ? `${app.name} ${variant}` : app.name;
-      entries.push({
-        id: `seed-${slug(displayName)}`,
-        name: displayName,
-        category: app.category,
-        start_url: app.url,
-        allowed_domains: domainsFor(app.url),
-        aliases: [...(app.aliases ?? []), app.name, variant].filter(Boolean),
-        icon: null,
-        icon_path: null,
-        default_user_agent: null,
-        unread_spec: { titleRegex: '\\((\\d+)\\)' },
-        mobile_mode: variant === 'Mobile',
-        source: 'seed',
-        created_at: now,
-        updated_at: now
-      });
-    }
-  }
-  return entries;
+  return BASE_APPS.map((app) => ({
+    id: `seed-${slug(app.name)}`,
+    name: app.name,
+    category: app.category,
+    start_url: app.url,
+    allowed_domains: domainsFor(app.url),
+    aliases: app.aliases ?? [],
+    icon: null,
+    icon_path: null,
+    default_user_agent: null,
+    unread_spec: { titleRegex: '\\((\\d+)\\)' },
+    mobile_mode: false,
+    source: 'seed',
+    created_at: now,
+    updated_at: now
+  }));
 }
 
 function domainsFor(url: string): string[] {

@@ -680,7 +680,7 @@ export interface SyncStatus {
   configured: boolean;
   folderPath?: string;
   lastSyncAt?: number;
-  pendingConflicts: number;
+  lastError?: string;
 }
 
 export interface FerdiumImportResult {

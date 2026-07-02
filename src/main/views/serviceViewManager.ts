@@ -10,6 +10,7 @@ import type {
   ServiceState
 } from '../../shared/types.js';
 import { getServiceInstance, setServiceLastUrl } from '../db/repositories/serviceInstances.js';
+import { isCustomCodeApproved } from '../services/customCode.js';
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
 import { upsertDownload } from '../db/repositories/downloads.js';
 import { permissionDecision } from '../db/repositories/permissionPolicies.js';
@@ -118,6 +119,7 @@ export class ServiceViewManager {
     private readonly servicePreloadPath: string,
     private readonly sendPush: PushSender,
     private readonly onActivity: () => void = () => {},
+    private readonly isLocked: () => boolean = () => false,
     private readonly extensionManager: ExtensionManager | null = null,
     private readonly trackerBlocker: TrackerBlocker | null = null,
     private window: BrowserWindow | null = null
@@ -128,6 +130,11 @@ export class ServiceViewManager {
   }
 
   setBounds(entries: Array<{ viewId: string; rect: Rect }>, visibleIds: string[]): void {
+    // Hard gate: while the app is locked, no IPC call may re-show or create live content over
+    // the lock screen. The renderer re-sends bounds right after a successful unlock.
+    if (this.isLocked()) {
+      return;
+    }
     this.visibleIds = new Set(visibleIds);
     const byId = new Map(entries.map((entry) => [entry.viewId, normalizeRect(entry.rect)]));
     this.detachHiddenViews(Date.now());
@@ -582,6 +589,15 @@ export class ServiceViewManager {
     if (extensionRuntime.js) {
       void managed.view.webContents.executeJavaScript(extensionRuntime.js, true);
     }
+    if (!instance.custom_css && !instance.custom_js) {
+      return;
+    }
+    // Custom code synced from another device (or a tampered vault) must be re-approved on THIS
+    // device before it runs in the page — it executes in the MAIN world with full page access.
+    if (!isCustomCodeApproved(this.db, instance)) {
+      this.sendPush('event:custom-code-pending', { instanceId: instance.id });
+      return;
+    }
     if (instance.custom_css) {
       void managed.view.webContents.insertCSS(instance.custom_css);
     }
@@ -609,6 +625,9 @@ export class ServiceViewManager {
   }
 
   private attach(managed: ManagedView): void {
+    if (this.isLocked()) {
+      return;
+    }
     if (!this.window || this.window.isDestroyed() || managed.attached) {
       return;
     }

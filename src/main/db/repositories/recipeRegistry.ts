@@ -6,8 +6,12 @@ import type {
   ServiceCategory
 } from '../../../shared/types.js';
 import { isHttpUrl } from '../../../shared/ipc-contract.js';
-import { generateSeedRegistryEntries } from '../../recipes/registrySeed.js';
+import {
+  generateSeedRegistryEntries,
+  SEED_REGISTRY_VERSION
+} from '../../recipes/registrySeed.js';
 import { parseJson, stringifyJson, toBool } from './json.js';
+import { getMeta, setMeta } from './meta.js';
 
 interface RecipeRegistryRow {
   id: string;
@@ -36,22 +40,27 @@ function mapEntry(row: RecipeRegistryRow): RecipeRegistryEntry {
   };
 }
 
+const SEED_VERSION_KEY = 'registry_seed_version';
+
 export function seedRecipeRegistry(db: Database.Database): void {
-  const count = (
-    db.prepare('SELECT COUNT(*) AS count FROM recipe_registry_entries').get() as { count: number }
-  ).count;
-  if (count >= 1500) {
+  if (getMeta(db, SEED_VERSION_KEY) === String(SEED_REGISTRY_VERSION)) {
     return;
   }
-  const stmt = db.prepare(
-    `INSERT OR IGNORE INTO recipe_registry_entries
+  const entries = generateSeedRegistryEntries();
+  const upsert = db.prepare(
+    `INSERT INTO recipe_registry_entries
       (id, name, category, start_url, allowed_domains, aliases, icon, icon_path, default_user_agent,
        unread_spec, mobile_mode, source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name, category = excluded.category, start_url = excluded.start_url,
+       allowed_domains = excluded.allowed_domains, aliases = excluded.aliases,
+       unread_spec = excluded.unread_spec, mobile_mode = excluded.mobile_mode,
+       updated_at = excluded.updated_at`
   );
   db.transaction(() => {
-    for (const entry of generateSeedRegistryEntries()) {
-      stmt.run(
+    for (const entry of entries) {
+      upsert.run(
         entry.id,
         entry.name,
         entry.category,
@@ -68,6 +77,17 @@ export function seedRecipeRegistry(db: Database.Database): void {
         entry.updated_at
       );
     }
+    // Prune seed rows that are no longer part of the curated set (the pre-v2 synthetic name
+    // variants), but never rows a service instance still references.
+    const keepIds = entries.map((entry) => entry.id);
+    const placeholders = keepIds.map(() => '?').join(', ');
+    db.prepare(
+      `DELETE FROM recipe_registry_entries
+       WHERE source = 'seed'
+         AND id NOT IN (${placeholders})
+         AND id NOT IN (SELECT DISTINCT recipe_id FROM service_instances)`
+    ).run(...keepIds);
+    setMeta(db, SEED_VERSION_KEY, String(SEED_REGISTRY_VERSION));
   })();
 }
 
