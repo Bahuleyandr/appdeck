@@ -2118,9 +2118,37 @@ function AiWorkflowPanel({
   const [prompt, setPrompt] = useState('');
   const [context, setContext] = useState('');
   const [output, setOutput] = useState<string | null>(null);
+  const [briefingMessage, setBriefingMessage] = useState<string | null>(null);
+
+  const enableMorningBriefing = async (): Promise<void> => {
+    await api.automations.upsert({
+      name: 'Morning briefing',
+      enabled: true,
+      trigger: {
+        type: 'schedule',
+        schedule: [{ from: '08:30', to: '08:45', days: [0, 1, 2, 3, 4, 5, 6] }]
+      },
+      actions: [{ type: 'runAiPrompt' }]
+    });
+    setBriefingMessage(
+      'Morning briefing scheduled daily at 08:30. The result lands in your inbox; edit or disable it under Automations.'
+    );
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+      <section className="panel rounded-md p-3 xl:col-span-2">
+        <div className="mb-2 text-sm font-semibold">Morning briefing</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="app-button primary" onClick={() => void enableMorningBriefing()}>
+            Enable morning briefing
+          </button>
+          <span className="text-xs text-muted">
+            A daily AI summary of your notifications, delivered to the inbox at 08:30.
+          </span>
+        </div>
+        {briefingMessage && <div className="mt-2 text-xs text-muted">{briefingMessage}</div>}
+      </section>
       <section className="panel rounded-md p-3">
         <div className="mb-3 text-sm font-semibold">Saved Prompt</div>
         <div className="space-y-2">

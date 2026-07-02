@@ -668,6 +668,14 @@ export interface AiPromptRunResult {
   text: string;
 }
 
+export interface AiRun {
+  id: number;
+  kind: 'brief' | 'prompt';
+  title: string;
+  text: string;
+  created_at: number;
+}
+
 export interface TriageItem {
   notificationId: number;
   instanceId: string;

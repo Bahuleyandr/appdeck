@@ -139,6 +139,7 @@ const allowedInvokeChannels = new Set<string>([
   'aiPrompt:delete',
   'aiPrompt:run',
   'aiPrompt:extractTasks',
+  'aiRun:list',
   'extension:list',
   'extension:add',
   'extension:remove',
@@ -165,7 +166,8 @@ const allowedPushChannels = new Set<string>([
   'event:notification',
   'event:update-status',
   'event:settings-changed',
-  'event:custom-code-pending'
+  'event:custom-code-pending',
+  'event:ai-run'
 ]);
 
 const api = {

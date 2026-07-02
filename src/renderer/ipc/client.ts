@@ -3,6 +3,7 @@ import type {
   AiBrief,
   AiPrompt,
   AiPromptRunResult,
+  AiRun,
   AiStatus,
   AutomationRule,
   AutomationTestResult,
@@ -389,6 +390,9 @@ export const api = {
     run: (payload: { id?: string; prompt?: string; context?: string }) =>
       invoke<AiPromptRunResult>('aiPrompt:run', payload),
     extractTasks: () => invoke<AiPromptRunResult>('aiPrompt:extractTasks')
+  },
+  aiRuns: {
+    list: (limit?: number) => invoke<AiRun[]>('aiRun:list', limit ? { limit } : undefined)
   },
   extensions: {
     list: () => invoke<ExtensionRecord[]>('extension:list'),

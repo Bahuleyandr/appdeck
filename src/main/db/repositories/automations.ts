@@ -79,10 +79,10 @@ export function deleteAutomation(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM automation_rules WHERE id = ?').run(id);
 }
 
-export function markAutomationRun(db: Database.Database, id: string): void {
+export function markAutomationRun(db: Database.Database, id: string, at = Date.now()): void {
   db.prepare('UPDATE automation_rules SET last_run_at = ?, updated_at = ? WHERE id = ?').run(
-    Date.now(),
-    Date.now(),
+    at,
+    at,
     id
   );
 }
@@ -125,6 +125,40 @@ export function testAutomation(
     );
   }
   return { matched, reasons, actions: matched ? rule.actions : [] };
+}
+
+/**
+ * Start timestamp of the schedule window that contains `now`, or null when none does. Used to
+ * fire schedule automations once per occurrence instead of on every runtime tick inside the
+ * window. Overnight windows (from > to) that we are in the early-morning tail of started
+ * yesterday. With overlapping slots the most recent start wins.
+ */
+export function scheduleSlotStart(
+  schedule: Array<{ from: string; to: string; days: number[] }>,
+  now: Date
+): number | null {
+  let latest: number | null = null;
+  const minute = now.getHours() * 60 + now.getMinutes();
+  for (const slot of schedule) {
+    const from = timeToMinute(slot.from);
+    const to = timeToMinute(slot.to);
+    const overnight = from > to;
+    const inWindow =
+      (!overnight && slot.days.includes(now.getDay()) && minute >= from && minute <= to) ||
+      (overnight &&
+        ((slot.days.includes(now.getDay()) && minute >= from) ||
+          (slot.days.includes((now.getDay() + 6) % 7) && minute <= to)));
+    if (!inWindow) {
+      continue;
+    }
+    const start = new Date(now);
+    if (overnight && minute <= to) {
+      start.setDate(start.getDate() - 1);
+    }
+    start.setHours(Math.floor(from / 60), from % 60, 0, 0);
+    latest = latest === null ? start.getTime() : Math.max(latest, start.getTime());
+  }
+  return latest;
 }
 
 function isScheduleActive(

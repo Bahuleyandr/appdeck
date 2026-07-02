@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   powerMonitor,
   Tray
 } from 'electron';
@@ -147,6 +148,15 @@ if (!gotLock) {
         sendPush('event:data-changed');
         fileSyncService.scheduleSync();
         cloudSyncService.scheduleSync();
+      },
+      aiService,
+      notifyUser: (title, body) => {
+        if (getBoolSetting(db, 'global_dnd') || !Notification.isSupported()) {
+          return;
+        }
+        const toast = new Notification({ title, body });
+        toast.on('click', () => restoreWindowForUserAttention(mainWindow));
+        toast.show();
       }
     });
     automationRuntime.start();

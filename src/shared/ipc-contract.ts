@@ -490,6 +490,7 @@ export const ipcSchemas = {
     context: z.string().optional()
   }),
   'aiPrompt:extractTasks': z.void(),
+  'aiRun:list': z.object({ limit: z.number().int().positive().max(50).optional() }).optional(),
 
   'extension:list': z.void(),
   'extension:add': z.object({ path: z.string().min(1) }),
@@ -551,7 +552,8 @@ export const pushChannels = [
   'event:notification',
   'event:update-status',
   'event:settings-changed',
-  'event:custom-code-pending'
+  'event:custom-code-pending',
+  'event:ai-run'
 ] as const;
 
 export type PushChannel = (typeof pushChannels)[number];

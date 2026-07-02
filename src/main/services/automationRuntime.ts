@@ -1,8 +1,11 @@
 import type Database from 'better-sqlite3';
 import type { AutomationAction, AutomationRule, UnreadCount } from '../../shared/types.js';
+import { getAiPrompt } from '../db/repositories/aiPrompts.js';
+import { insertAiRun } from '../db/repositories/aiRuns.js';
 import {
   listAutomations,
   markAutomationRun,
+  scheduleSlotStart,
   testAutomation
 } from '../db/repositories/automations.js';
 import { createTask } from '../db/repositories/tasks.js';
@@ -16,6 +19,14 @@ export interface AutomationRuntimeDeps {
   };
   sendPush: (channel: string, payload?: unknown) => void;
   sendDataChanged: () => void;
+  /** Structural so tests can fake it; wired to AiService in main. */
+  aiService?: {
+    status(): { configured: boolean };
+    brief(): Promise<{ text: string }>;
+    runPrompt(prompt: string, context?: string): Promise<{ text: string }>;
+  };
+  /** Plain user-facing toast (not service-gated); wired to Electron Notification in main. */
+  notifyUser?: (title: string, body: string) => void;
 }
 
 export interface AutomationRunSummary {
@@ -25,8 +36,18 @@ export interface AutomationRunSummary {
 
 export class AutomationRuntime {
   private scheduleTimer: NodeJS.Timeout | null = null;
+  private aiRunsInFlight: Array<Promise<void>> = [];
 
   constructor(private readonly deps: AutomationRuntimeDeps) {}
+
+  /** Await outstanding fire-and-forget AI actions (used by tests and shutdown). */
+  async settle(): Promise<void> {
+    while (this.aiRunsInFlight.length) {
+      const pending = this.aiRunsInFlight;
+      this.aiRunsInFlight = [];
+      await Promise.allSettled(pending);
+    }
+  }
 
   start(): void {
     this.handleStartup();
@@ -81,11 +102,22 @@ export class AutomationRuntime {
       if (!result.matched) {
         continue;
       }
+      // Schedule rules fire once per window occurrence, not on every 60-second tick inside it.
+      if (rule.trigger.type === 'schedule') {
+        const slotStart = scheduleSlotStart(
+          rule.trigger.schedule ?? [],
+          new Date(Number(sample.now) || Date.now())
+        );
+        if (slotStart !== null && rule.last_run_at !== null && rule.last_run_at >= slotStart) {
+          continue;
+        }
+      }
       for (const action of result.actions) {
         this.executeAction(action, sample);
         actionCount += 1;
       }
-      markAutomationRun(this.deps.db, rule.id);
+      // Record the run at the event's own clock so schedule dedup works under injected time.
+      markAutomationRun(this.deps.db, rule.id, Number(sample.now) || Date.now());
       ran += 1;
     }
     if (ran > 0) {
@@ -96,6 +128,10 @@ export class AutomationRuntime {
 
   private executeAction(action: AutomationAction, sample: Record<string, unknown>): void {
     const targetId = action.targetId ?? stringSample(sample.serviceId);
+    if (action.type === 'runAiPrompt') {
+      this.aiRunsInFlight.push(this.runAiAction(action));
+      return;
+    }
     if (action.type === 'createTask') {
       createTask(this.deps.db, action.value || taskTitle(sample));
       return;
@@ -120,6 +156,34 @@ export class AutomationRuntime {
     }
     if (action.type === 'setFocusMode' && action.targetId) {
       this.deps.sendPush('event:focus-mode-requested', { focusModeId: action.targetId });
+    }
+  }
+
+  // Fire-and-forget by design: an AI provider failure must never break the other actions of a
+  // rule or the runtime loop. Failures are swallowed after logging; successes are persisted to
+  // ai_runs and announced.
+  private async runAiAction(action: AutomationAction): Promise<void> {
+    const ai = this.deps.aiService;
+    if (!ai || !ai.status().configured) {
+      return;
+    }
+    try {
+      const saved = action.targetId ? getAiPrompt(this.deps.db, action.targetId) : null;
+      const prompt = saved?.prompt ?? (action.value?.trim() || null);
+      const kind = prompt ? 'prompt' : 'brief';
+      const title = saved?.title ?? (prompt ? 'AI prompt' : 'Briefing');
+      const result = prompt ? await ai.runPrompt(prompt) : await ai.brief();
+      if (!result.text.trim()) {
+        return;
+      }
+      const run = insertAiRun(this.deps.db, { kind, title, text: result.text });
+      this.deps.sendPush('event:ai-run', run);
+      this.deps.notifyUser?.(
+        'AppDeck',
+        kind === 'brief' ? 'Your briefing is ready.' : `"${title}" finished.`
+      );
+    } catch (error) {
+      console.error('AI automation action failed', error);
     }
   }
 }

@@ -14,7 +14,7 @@ import {
   Wand2,
   X
 } from 'lucide-react';
-import type { NotificationRecord } from '../../shared/types';
+import type { AiRun, NotificationRecord } from '../../shared/types';
 import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
 
@@ -56,10 +56,18 @@ export function InboxPanel(): JSX.Element | null {
   const [archive, setArchive] = useState<NotificationRecord[]>([]);
   const [archiveDone, setArchiveDone] = useState(false);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
+  const [latestRun, setLatestRun] = useState<AiRun | null>(null);
+  const [runDismissed, setRunDismissed] = useState(false);
 
   useEffect(() => {
     if (!inboxOpen) return;
     void api.notifications.lastSeen().then((seen) => setLastSeenAt(seen.at));
+    void api.aiRuns.list(1).then((runs) => setLatestRun(runs[0] ?? null));
+    const unsubscribe = api.on('event:ai-run', (payload) => {
+      setLatestRun(payload as AiRun);
+      setRunDismissed(false);
+    });
+    return unsubscribe;
   }, [inboxOpen]);
 
   // Browse mode groups by service (alphabetical, newest first inside a group); search results
@@ -224,6 +232,22 @@ export function InboxPanel(): JSX.Element | null {
       {brief !== null && (
         <div className="max-h-56 shrink-0 overflow-y-auto border-b border-line bg-shell p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink">
           {busy ? 'Thinking…' : brief}
+        </div>
+      )}
+      {latestRun && !runDismissed && !archiveMode && brief === null && (
+        <div className="shrink-0 border-b border-line bg-shell p-3 text-xs">
+          <div className="mb-1.5 flex items-center justify-between font-semibold text-ink">
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={12} className="text-accent" />
+              {latestRun.title} · {new Date(latestRun.created_at).toLocaleString()}
+            </span>
+            <button className="text-muted hover:text-ink" onClick={() => setRunDismissed(true)}>
+              <X size={13} />
+            </button>
+          </div>
+          <div className="max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed text-muted">
+            {latestRun.text}
+          </div>
         </div>
       )}
       {suggestions !== null && (

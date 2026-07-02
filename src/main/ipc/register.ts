@@ -88,6 +88,7 @@ import {
   listAiPrompts,
   upsertAiPrompt
 } from '../db/repositories/aiPrompts.js';
+import { listAiRuns } from '../db/repositories/aiRuns.js';
 import {
   deleteAutomation,
   getAutomation,
@@ -754,6 +755,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       return ctx.aiService.runPrompt(prompt, input.context);
     },
     'aiPrompt:extractTasks': () => ctx.aiService.extractTasks(),
+    'aiRun:list': (payload) => {
+      const input = parseIpcPayload('aiRun:list', payload);
+      return listAiRuns(ctx.db, input?.limit);
+    },
 
     'extension:list': () => listExtensions(ctx.db),
     'extension:add': (payload) => {
