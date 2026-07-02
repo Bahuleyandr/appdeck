@@ -4,19 +4,60 @@ import {
   getRecipeRegistryEntry,
   listRecipeRegistryEntries,
   recipeRegistryStats,
+  seedRecipeRegistry,
   validateRecipeRegistryPack
 } from '../../src/main/db/repositories/recipeRegistry.js';
+import { createServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
+import { deleteMeta } from '../../src/main/db/repositories/meta.js';
+import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { RecipeLoader } from '../../src/main/recipes/loader.js';
 import { createTestDb } from './helpers.js';
 
 describe('recipe registry', () => {
-  it('seeds a personal-pro sized app catalog', () => {
+  it('seeds an honest catalog: every seed entry is a distinct real app', () => {
     const { db } = createTestDb();
     const stats = recipeRegistryStats(db);
+    const seeds = listRecipeRegistryEntries(db, '', 2000).filter(
+      (entry) => entry.source === 'seed'
+    );
 
-    expect(stats.seed).toBeGreaterThanOrEqual(1500);
-    expect(stats.total).toBeGreaterThanOrEqual(1500);
-    expect(listRecipeRegistryEntries(db, 'slack mobile', 5)[0]?.mobile_mode).toBe(true);
+    // One row per hand-curated app — no name-variant padding.
+    expect(stats.seed).toBeGreaterThanOrEqual(80);
+    expect(stats.seed).toBeLessThan(200);
+    expect(seeds).toHaveLength(stats.seed);
+    expect(new Set(seeds.map((entry) => entry.start_url)).size).toBe(seeds.length);
+    expect(new Set(seeds.map((entry) => entry.name)).size).toBe(seeds.length);
+    // "Azure Portal" is a real product name; the fabricated v1 suffixes were Inbox/Admin/Lite/….
+    expect(seeds.some((entry) => / (Inbox|Admin|Lite|Workspace|Reports)$/.test(entry.name))).toBe(
+      false
+    );
+  });
+
+  it('prunes legacy synthetic seed variants on reseed, keeping rows in use', () => {
+    const { db, deviceId } = createTestDb();
+    const workspace = listWorkspaces(db)[0];
+    if (!workspace) throw new Error('Expected default workspace');
+    const insertLegacy = db.prepare(
+      `INSERT OR REPLACE INTO recipe_registry_entries
+        (id, name, category, start_url, allowed_domains, aliases, icon, icon_path, default_user_agent,
+         unread_spec, mobile_mode, source, created_at, updated_at)
+       VALUES (?, ?, 'Chat', 'https://app.slack.com/', '[]', '[]', NULL, NULL, NULL, NULL, 0, 'seed', 0, 0)`
+    );
+    insertLegacy.run('seed-slack-portal', 'Slack Portal');
+    insertLegacy.run('seed-slack-inbox', 'Slack Inbox');
+    createServiceInstance(db, deviceId, {
+      recipeId: 'seed-slack-portal',
+      workspaceId: workspace.id,
+      displayName: 'Kept Slack'
+    });
+
+    deleteMeta(db, 'registry_seed_version');
+    seedRecipeRegistry(db);
+
+    // Unreferenced padding is gone; a row a service still points at survives.
+    expect(getRecipeRegistryEntry(db, 'seed-slack-inbox')).toBe(null);
+    expect(getRecipeRegistryEntry(db, 'seed-slack-portal')?.name).toBe('Slack Portal');
+    expect(getRecipeRegistryEntry(db, 'seed-slack')?.name).toBe('Slack');
   });
 
   it('compacts synthetic seed variants in the user-facing app catalog', () => {

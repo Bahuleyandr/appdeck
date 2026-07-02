@@ -27,9 +27,22 @@ const ServiceCatalog = lazy(() =>
   import('./components/ServiceCatalog').then((module) => ({ default: module.ServiceCatalog }))
 );
 
+// Service-affecting shortcuts must not fire while the user is typing in a field; app-level ones
+// (palette, settings, lock) stay global like in mainstream launchers.
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
 export function App(): JSX.Element {
   const {
     loading,
+    loadError,
     load,
     setServiceState,
     setUnread,
@@ -46,6 +59,9 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     void load();
+    // Bursty mutations (drag-reorder, work-kit apply) fire many data-changed events; coalesce
+    // them into one reload instead of racing parallel full refetches.
+    let reloadTimer: number | undefined;
     const unsubscribers = [
       api.on('event:service-state', (payload) => {
         const event = payload as {
@@ -64,7 +80,10 @@ export function App(): JSX.Element {
         void selectService(event.instanceId);
       }),
       api.on('event:data-changed', () => {
-        void load();
+        window.clearTimeout(reloadTimer);
+        reloadTimer = window.setTimeout(() => {
+          void load();
+        }, 150);
       }),
       api.on('event:notification', (payload) => {
         const event = payload as { unread?: number };
@@ -78,13 +97,14 @@ export function App(): JSX.Element {
       const mod = event.ctrlKey || event.metaKey;
       const state = useAppStore.getState();
       const active = state.selectedServiceIds[0];
+      const typing = isEditableTarget(event.target);
 
       if (mod && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setCommandOpen(true);
         return;
       }
-      if (mod && event.key.toLowerCase() === 't' && active) {
+      if (mod && event.key.toLowerCase() === 't' && active && !typing) {
         event.preventDefault();
         void state.newTab(active);
         return;
@@ -99,13 +119,13 @@ export function App(): JSX.Element {
         void state.lock();
         return;
       }
-      if (mod && event.key.toLowerCase() === 'r' && active) {
+      if (mod && event.key.toLowerCase() === 'r' && active && !typing) {
         event.preventDefault();
         void api.services.reload(active);
         return;
       }
       // Ctrl/Cmd + 1..9 jumps to the Nth (enabled) service.
-      if (mod && /^[1-9]$/.test(event.key)) {
+      if (mod && /^[1-9]$/.test(event.key) && !typing) {
         const target = state.services.filter((s) => !s.disabled)[Number(event.key) - 1];
         if (target) {
           event.preventDefault();
@@ -114,7 +134,7 @@ export function App(): JSX.Element {
         return;
       }
       // Ctrl+Tab / Ctrl+Shift+Tab cycles tabs within the active service.
-      if (event.ctrlKey && event.key === 'Tab' && active) {
+      if (event.ctrlKey && event.key === 'Tab' && active && !typing) {
         const list = state.tabs[active] ?? [];
         if (list.length > 1) {
           event.preventDefault();
@@ -128,7 +148,7 @@ export function App(): JSX.Element {
         return;
       }
       // Ctrl/Cmd + W closes the active tab, but never the last one (the pane would vanish).
-      if (mod && event.key.toLowerCase() === 'w' && active) {
+      if (mod && event.key.toLowerCase() === 'w' && active && !typing) {
         const list = state.tabs[active] ?? [];
         const cur = list.find((tab) => tab.active) ?? list[0];
         if (list.length > 1 && cur) {
@@ -139,6 +159,7 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', keyHandler);
     return () => {
+      window.clearTimeout(reloadTimer);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       window.removeEventListener('keydown', keyHandler);
     };
@@ -157,6 +178,18 @@ export function App(): JSX.Element {
     return (
       <div className="flex h-full items-center justify-center bg-shell text-muted">
         Loading AppDeck
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-shell text-ink">
+        <div className="text-lg font-semibold">AppDeck could not load</div>
+        <div className="max-w-lg break-words text-center text-sm text-muted">{loadError}</div>
+        <button className="app-button primary" onClick={() => void load()}>
+          Try again
+        </button>
       </div>
     );
   }

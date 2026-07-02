@@ -855,6 +855,19 @@ function ServicePanel({
   const [proxyBypass, setProxyBypass] = useState(service?.proxy?.bypassRules ?? '');
   const [findText, setFindText] = useState('');
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+  const [codePending, setCodePending] = useState(false);
+
+  useEffect(() => {
+    if (!service) {
+      setCodePending(false);
+      return;
+    }
+    void api.services
+      .pendingCustomCode()
+      .then((pending) =>
+        setCodePending(pending.some((entry) => entry.instanceId === service.id))
+      );
+  }, [service]);
 
   useEffect(() => {
     setDisplayName(service?.display_name ?? '');
@@ -979,6 +992,25 @@ function ServicePanel({
       <section className="panel rounded-md p-3">
         <div className="mb-3 text-sm font-semibold">Runtime</div>
         <div className="space-y-2">
+          {codePending && (
+            <div className="rounded-md border border-amber-400/50 bg-amber-400/10 p-2 text-xs">
+              <div className="mb-1 font-semibold">Custom code needs your approval</div>
+              <div className="text-muted">
+                The custom CSS/JS on this service changed outside this device (sync or import).
+                It will not run until you review and approve it here.
+              </div>
+              <button
+                className="app-button mt-2"
+                onClick={() =>
+                  void api.services.approveCustomCode(service.id).then(() => {
+                    setCodePending(false);
+                  })
+                }
+              >
+                Approve and run
+              </button>
+            </div>
+          )}
           <input
             className="field w-full"
             value={userAgent}
@@ -1331,7 +1363,7 @@ function CatalogPanel({
           <input
             className="field"
             value={q}
-            placeholder="Search 1,500+ app recipes"
+            placeholder="Search the curated app catalog"
             onChange={(event) => setQ(event.target.value)}
           />
           <div className="rounded-md border border-line px-3 py-2 text-xs text-muted">
@@ -2885,9 +2917,12 @@ function PeerSyncPanel({
   status: PeerSyncStatus | null;
   refresh: () => void;
 }): JSX.Element {
+  const settings = useAppStore((state) => state.settings);
+  const setSettingValue = useAppStore((state) => state.setSettingValue);
   const [label, setLabel] = useState('Laptop');
   const [endpoint, setEndpoint] = useState('https://device.tailnet.ts.net/appdeck#shared-secret');
   const [result, setResult] = useState('');
+  const serveEnabled = settings.peer_sync_serve === 'true';
   const save = async (): Promise<void> => {
     await api.peerSync.upsert({ label, endpoint, enabled: true });
     refresh();
@@ -2896,6 +2931,24 @@ function PeerSyncPanel({
     <section className="space-y-3">
       <div className="panel rounded-md p-3">
         <div className="mb-3 text-sm font-semibold">Encrypted Peer Sync</div>
+        <label className="mb-2 flex items-center gap-2 rounded-md border border-line p-2 text-sm">
+          <input
+            type="checkbox"
+            checked={serveEnabled}
+            onChange={(event) =>
+              void setSettingValue('peer_sync_serve', event.target.checked ? 'true' : 'false').then(
+                refresh
+              )
+            }
+          />
+          <span>
+            Share this device&apos;s vault with peers
+            <span className="block text-xs text-muted">
+              Opens a local encrypted endpoint (off by default). Peers still need the shared
+              secret.
+            </span>
+          </span>
+        </label>
         <div className="grid gap-2 lg:grid-cols-[1fr_2fr_auto]">
           <input
             className="field"
@@ -3152,7 +3205,12 @@ function SyncPanel({
   syncStatus: ReturnType<typeof useAppStore.getState>['syncStatus'];
   syncNow: () => Promise<void>;
 }): JSX.Element {
-  const [account, setAccount] = useState<{ configured: boolean; email?: string }>({
+  const [account, setAccount] = useState<{
+    configured: boolean;
+    email?: string;
+    lastSyncAt?: number;
+    lastError?: string;
+  }>({
     configured: false
   });
   const [serverUrl, setServerUrl] = useState('');
@@ -3186,10 +3244,11 @@ function SyncPanel({
             {syncStatus.configured ? syncStatus.folderPath : 'File sync is not configured.'}
           </div>
           <div className="rounded-md border border-line p-2 text-muted">
-            Conflicts: {syncStatus.pendingConflicts}
-            {syncStatus.lastSyncAt
-              ? ` / Last sync ${new Date(syncStatus.lastSyncAt).toLocaleString()}`
-              : ''}
+            {syncStatus.lastError
+              ? `Last sync failed: ${syncStatus.lastError}`
+              : syncStatus.lastSyncAt
+                ? `Healthy / Last sync ${new Date(syncStatus.lastSyncAt).toLocaleString()}`
+                : 'No sync has run yet.'}
           </div>
           <button
             className="app-button"
@@ -3204,7 +3263,13 @@ function SyncPanel({
         <div className="space-y-2">
           <div className="rounded-md border border-line p-2 text-xs text-muted">
             {account.configured
-              ? `Signed in as ${account.email ?? ''}`
+              ? `Signed in as ${account.email ?? ''}${
+                  account.lastError
+                    ? ` / Last sync failed: ${account.lastError}`
+                    : account.lastSyncAt
+                      ? ` / Last sync ${new Date(account.lastSyncAt).toLocaleString()}`
+                      : ''
+                }`
               : 'Cloudflare Worker compatible, end-to-end encrypted.'}
           </div>
           <input

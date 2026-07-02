@@ -18,7 +18,8 @@ Messenger, Gmail, …) as isolated, sleepable, multi-account panes inside one El
 AppDeck exposes the workflow controls that many workspace browsers put behind paid tiers:
 unlimited workspaces, profiles, custom apps, per-service sleep/mute/pin/user-agent/custom CSS/JS,
 Chrome extension toggles, migration import, memory diagnostics, and local or zero-knowledge sync.
-The Personal Pro layer also adds a 1,500+ local recipe registry, community recipe packs, nested
+The Personal Pro layer also adds a curated local recipe registry (120+ real apps, no padding),
+community recipe packs, nested
 workspace groups, enable/disable controls, working-hours focus rules, per-service proxy/permission/
 download/zoom/find/storage controls, editable link-routing rules, dashboards/widgets, provider-
 agnostic BYO AI configuration, privacy shield settings, shortcuts, and self-host sync status.

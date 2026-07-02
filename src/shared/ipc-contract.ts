@@ -202,6 +202,8 @@ export const ipcSchemas = {
   'service:setZoom': z.object({ id: idSchema, zoomFactor: z.number().positive() }),
   'service:find': z.object({ id: idSchema, text: z.string(), forward: z.boolean().optional() }),
   'service:stopFind': z.object({ id: idSchema }),
+  'service:pendingCustomCode': z.void(),
+  'service:approveCustomCode': z.object({ id: idSchema }),
 
   'view:setBounds': z.object({
     entries: z.array(z.object({ viewId: idSchema, rect: rectSchema })),
@@ -506,7 +508,8 @@ export const ipcSchemas = {
       'launch_at_login',
       'auto_lock_minutes',
       'portable_mode_enabled',
-      'portable_mode_root'
+      'portable_mode_root',
+      'peer_sync_serve'
     ]),
     value: z.string()
   }),
@@ -540,7 +543,8 @@ export const pushChannels = [
   'event:data-changed',
   'event:notification',
   'event:update-status',
-  'event:settings-changed'
+  'event:settings-changed',
+  'event:custom-code-pending'
 ] as const;
 
 export type PushChannel = (typeof pushChannels)[number];

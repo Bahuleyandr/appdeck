@@ -11,7 +11,7 @@ import {
   type WrappedRootKey
 } from './crypto.js';
 import { mergeVaultPlaintext } from './merge.js';
-import { decryptVault, encryptVault } from './vault.js';
+import { decryptVault, encryptVault, localVaultHash, vaultContentHash } from './vault.js';
 
 const CLOUD_DEBOUNCE_MS = 2000;
 
@@ -32,14 +32,19 @@ export class CloudSyncService {
   private rootKey: Uint8Array | null = null;
   private token: string | null = null;
   private debounce: NodeJS.Timeout | null = null;
+  private inflight: Promise<SyncResult> | null = null;
+  private lastError: string | undefined;
 
   constructor(private readonly db: Database.Database) {}
 
-  status(): { configured: boolean; email?: string } {
+  status(): { configured: boolean; email?: string; lastSyncAt?: number; lastError?: string } {
     const email = getMeta(this.db, 'cloud_email') ?? undefined;
+    const lastSyncAtRaw = getMeta(this.db, 'cloud_last_at');
     return {
       configured: Boolean(getMeta(this.db, 'cloud_url') && getMeta(this.db, 'cloud_token_safe')),
-      email
+      email,
+      lastSyncAt: lastSyncAtRaw ? Number(lastSyncAtRaw) : undefined,
+      lastError: this.lastError
     };
   }
 
@@ -88,21 +93,47 @@ export class CloudSyncService {
     setMeta(this.db, 'cloud_root_safe', '');
   }
 
-  async syncNow(): Promise<SyncResult> {
+  // Deliberately not `async`: callers awaiting a coalesced call must receive the SAME in-flight
+  // promise, and an async wrapper would mint a new one per call.
+  syncNow(): Promise<SyncResult> {
+    if (this.inflight) {
+      return this.inflight;
+    }
     const url = getMeta(this.db, 'cloud_url');
     const token = this.requireToken();
     const rootKey = this.requireRootKey();
     if (!url || !token || !rootKey) {
-      return { applied: 0, conflicts: 0 };
+      return Promise.resolve({ applied: 0, conflicts: 0 });
     }
+    const flight = this.performSync(url, token, rootKey)
+      .then((result) => {
+        this.lastError = undefined;
+        setMeta(this.db, 'cloud_last_at', String(Date.now()));
+        return result;
+      })
+      .catch((error: unknown) => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        throw error;
+      })
+      .finally(() => {
+        this.inflight = null;
+      });
+    this.inflight = flight;
+    return flight;
+  }
+
+  private async performSync(url: string, token: string, rootKey: Uint8Array): Promise<SyncResult> {
     const remote = await this.fetchVault(url, token);
     let result: SyncResult = { applied: 0, conflicts: 0 };
     let baseRevision = Math.max(remote.revision, Number(getMeta(this.db, 'cloud_revision') ?? 0));
     if (remote.ciphertext) {
-      result = mergeVaultPlaintext(
-        this.db,
-        await decryptVault(Buffer.from(remote.ciphertext, 'base64'), rootKey)
-      );
+      const remoteVault = await decryptVault(Buffer.from(remote.ciphertext, 'base64'), rootKey);
+      result = mergeVaultPlaintext(this.db, remoteVault);
+      if (vaultContentHash(remoteVault) === localVaultHash(this.db)) {
+        // Converged with the server — pushing again would only churn revisions and D1 writes.
+        setMeta(this.db, 'cloud_revision', String(remote.revision));
+        return result;
+      }
     }
     const ciphertext = (await encryptVault(this.db, rootKey)).toString('base64');
     let put = await this.putVault(url, token, ciphertext, baseRevision + 1);

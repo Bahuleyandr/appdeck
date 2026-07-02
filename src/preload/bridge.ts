@@ -28,6 +28,8 @@ const allowedInvokeChannels = new Set<string>([
   'service:setZoom',
   'service:find',
   'service:stopFind',
+  'service:pendingCustomCode',
+  'service:approveCustomCode',
   'view:setBounds',
   'view:focus',
   'tab:list',
@@ -160,7 +162,8 @@ const allowedPushChannels = new Set<string>([
   'event:data-changed',
   'event:notification',
   'event:update-status',
-  'event:settings-changed'
+  'event:settings-changed',
+  'event:custom-code-pending'
 ]);
 
 const api = {

@@ -26,7 +26,8 @@ const DEFAULT_SETTINGS: SettingsMap = {
   launch_at_login: 'false',
   auto_lock_minutes: '',
   portable_mode_enabled: 'false',
-  portable_mode_root: ''
+  portable_mode_root: '',
+  peer_sync_serve: 'false'
 };
 
 export type ProControlsPanel =
@@ -68,6 +69,7 @@ export function applyTheme(theme: string): void {
 
 interface AppState {
   loading: boolean;
+  loadError: string | null;
   workspaces: Workspace[];
   profiles: Profile[];
   recipes: RecipeCatalogItem[];
@@ -97,7 +99,7 @@ interface AppState {
     configured: boolean;
     folderPath?: string;
     lastSyncAt?: number;
-    pendingConflicts: number;
+    lastError?: string;
   };
   load: () => Promise<void>;
   refreshServices: () => Promise<void>;
@@ -176,6 +178,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   loading: true,
+  loadError: null,
   workspaces: [],
   profiles: [],
   recipes: [],
@@ -201,8 +204,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   tabs: {},
   settings: DEFAULT_SETTINGS,
   aiConfigured: false,
-  syncStatus: { configured: false, pendingConflicts: 0 },
+  syncStatus: { configured: false },
   load: async () => {
+    // A single rejected IPC call must never strand the UI on the startup splash — surface it
+    // and let the user retry instead.
+    let loaded;
+    try {
+      loaded = await Promise.all([
+        api.workspaces.list(),
+        api.profiles.list(),
+        api.recipes.catalog(),
+        api.tasks.list(),
+        api.lock.status(),
+        api.sync.status(),
+        api.settings.get(),
+        api.notifications.unreadCount(),
+        api.ai.status()
+      ]);
+    } catch (error) {
+      set({
+        loading: false,
+        loadError: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
     const [
       workspaces,
       profiles,
@@ -213,17 +238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       settings,
       unread,
       aiStatus
-    ] = await Promise.all([
-      api.workspaces.list(),
-      api.profiles.list(),
-      api.recipes.catalog(),
-      api.tasks.list(),
-      api.lock.status(),
-      api.sync.status(),
-      api.settings.get(),
-      api.notifications.unreadCount(),
-      api.ai.status()
-    ]);
+    ] = loaded;
     applyTheme(settings.theme);
     const activeWorkspaces = workspaces.filter((workspace) => !workspace.disabled);
     const selectedWorkspaceId = activeWorkspaces.some(
@@ -248,6 +263,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({
       loading: false,
+      loadError: null,
       workspaces,
       profiles,
       recipes,

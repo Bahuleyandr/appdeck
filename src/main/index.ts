@@ -109,6 +109,7 @@ if (!gotLock) {
       servicePreload,
       sendPush,
       () => lockService?.bumpIdleTimer(),
+      () => lockService?.status().locked ?? false,
       extensionManager,
       trackerBlocker,
       mainWindow

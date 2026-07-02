@@ -18,8 +18,8 @@ export class FileSyncService {
   private rootKey: Uint8Array | null = null;
   private watchDebounce: NodeJS.Timeout | null = null;
   private localDebounce: NodeJS.Timeout | null = null;
-  /** Content hash (plaintext, not ciphertext) of the vault state we last wrote or converged on. */
-  private lastContentHash: string | null = null;
+  private inflight: Promise<SyncResult> | null = null;
+  private lastError: string | undefined;
   /** Ignore watcher events until this time — they are echoes of our own write. */
   private suppressWatcherUntil = 0;
 
@@ -42,14 +42,14 @@ export class FileSyncService {
     }
   }
 
-  status(): { configured: boolean; folderPath?: string; lastSyncAt?: number; pendingConflicts: number } {
+  status(): { configured: boolean; folderPath?: string; lastSyncAt?: number; lastError?: string } {
     const folderPath = getMeta(this.db, 'sync_folder') ?? undefined;
     const lastSyncAtRaw = getMeta(this.db, 'sync_last_at');
     return {
       configured: Boolean(folderPath),
       folderPath,
       lastSyncAt: lastSyncAtRaw ? Number(lastSyncAtRaw) : undefined,
-      pendingConflicts: 0
+      lastError: this.lastError
     };
   }
 
@@ -89,7 +89,29 @@ export class FileSyncService {
     return result;
   }
 
-  async syncNow(): Promise<SyncResult> {
+  // Deliberately not `async`: callers awaiting a coalesced call must receive the SAME in-flight
+  // promise, and an async wrapper would mint a new one per call.
+  syncNow(): Promise<SyncResult> {
+    if (this.inflight) {
+      return this.inflight;
+    }
+    const flight = this.performSync()
+      .then((result) => {
+        this.lastError = undefined;
+        return result;
+      })
+      .catch((error: unknown) => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        throw error;
+      })
+      .finally(() => {
+        this.inflight = null;
+      });
+    this.inflight = flight;
+    return flight;
+  }
+
+  private async performSync(): Promise<SyncResult> {
     const folder = getMeta(this.db, 'sync_folder');
     if (!folder) {
       return { applied: 0, conflicts: 0 };
@@ -103,14 +125,12 @@ export class FileSyncService {
       const remoteHash = vaultContentHash(remote);
       if (remoteHash === localVaultHash(this.db)) {
         // Already converged — nothing to merge, nothing to write. Breaks the echo loop.
-        this.lastContentHash = remoteHash;
         setMeta(this.db, 'sync_last_at', String(Date.now()));
         return result;
       }
       result = mergeVaultPlaintext(this.db, remote);
       if (localVaultHash(this.db) === remoteHash) {
         // Merge produced exactly the remote state (remote was strictly newer) — don't write back.
-        this.lastContentHash = remoteHash;
         setMeta(this.db, 'sync_last_at', String(Date.now()));
         return result;
       }
@@ -167,7 +187,6 @@ export class FileSyncService {
   private async writeVault(target: string, rootKey: Uint8Array): Promise<void> {
     this.suppressWatcherUntil = Date.now() + SELF_WRITE_SUPPRESS_MS;
     await writeVaultFile(this.db, rootKey, target);
-    this.lastContentHash = localVaultHash(this.db);
   }
 
   private storeRootKey(rootKey: Uint8Array, wrapped: WrappedRootKey, folderPath: string): void {

@@ -6,6 +6,7 @@ import personalProSql from './migrations/0004_personal_pro.sql?raw';
 import moatsSql from './migrations/0005_moats.sql?raw';
 import beyondParitySql from './migrations/0006_beyond_parity.sql?raw';
 import { DEFAULT_WORKSPACE_NAME } from '../../shared/constants.js';
+import { grandfatherExistingCustomCode } from '../services/customCode.js';
 import { seedRecipeRegistry } from './repositories/recipeRegistry.js';
 
 const MIGRATIONS: Array<{ version: number; sql: string }> = [
@@ -51,6 +52,7 @@ export function migrate(db: Database.Database): void {
   if (getSchemaVersion(db) >= 4) {
     seedRecipeRegistry(db);
   }
+  grandfatherExistingCustomCode(db);
 }
 
 function seedDefaultWorkspace(db: Database.Database): void {
