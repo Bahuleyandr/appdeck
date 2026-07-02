@@ -2020,6 +2020,8 @@ function PerformancePanel({
   status: PerformanceStatus | null;
   refresh: () => void;
 }): JSX.Element {
+  const settings = useAppStore((state) => state.settings);
+  const setSettingValue = useAppStore((state) => state.setSettingValue);
   return (
     <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
       <section className="panel rounded-md p-3">
@@ -2035,6 +2037,10 @@ function PerformancePanel({
             <div className="mt-1 text-2xl font-semibold">{status?.totalMemoryMB ?? '-'} MB</div>
           </div>
           <div className="rounded-md border border-line p-3">
+            <div className="text-xs text-muted">Saved by sleeping (estimate, this session)</div>
+            <div className="mt-1 text-2xl font-semibold">{status?.estimatedSavedMB ?? 0} MB</div>
+          </div>
+          <div className="rounded-md border border-line p-3">
             <div className="text-xs text-muted">Services</div>
             <div className="mt-1 text-2xl font-semibold">
               {status
@@ -2042,6 +2048,16 @@ function PerformancePanel({
                 : '-'}
             </div>
           </div>
+          <label className="flex items-center gap-2 rounded-md border border-line p-2 text-sm">
+            <input
+              type="checkbox"
+              checked={settings.show_memory_badges === 'true'}
+              onChange={(event) =>
+                void setSettingValue('show_memory_badges', event.target.checked ? 'true' : 'false')
+              }
+            />
+            Show memory badges in the service rail
+          </label>
         </div>
         <div className="mt-3 space-y-2">
           {(status?.suggestions ?? []).map((suggestion) => (
@@ -2057,6 +2073,22 @@ function PerformancePanel({
         </div>
       </section>
       <section className="panel rounded-md p-3">
+        <div className="mb-3 text-sm font-semibold">Per service</div>
+        <div className="mb-4 space-y-1">
+          {(status?.services ?? []).map((service) => (
+            <div
+              key={service.instanceId}
+              className="grid grid-cols-[1fr_80px_80px] gap-2 rounded-md border border-line px-2 py-1 text-xs"
+            >
+              <span className="truncate">{service.displayName}</span>
+              <span className="text-muted">{service.state}</span>
+              <span className="text-right">
+                {service.state === 'sleeping' ? '0 MB' : `${service.memoryMB} MB`}
+              </span>
+            </div>
+          ))}
+          {!status?.services?.length && <EmptyState label="No live services yet." />}
+        </div>
         <div className="mb-3 text-sm font-semibold">Processes</div>
         <div className="space-y-1">
           {status?.processes.map((process, index) => (

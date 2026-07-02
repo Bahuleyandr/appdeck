@@ -27,7 +27,9 @@ const DEFAULT_SETTINGS: SettingsMap = {
   auto_lock_minutes: '',
   portable_mode_enabled: 'false',
   portable_mode_root: '',
-  peer_sync_serve: 'false'
+  peer_sync_serve: 'false',
+  show_memory_badges: 'false',
+  notification_retention_days: '30'
 };
 
 export type ProControlsPanel =

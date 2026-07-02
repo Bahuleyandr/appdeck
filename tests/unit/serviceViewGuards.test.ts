@@ -231,6 +231,18 @@ describe('service view guards', () => {
     expect(view.webContents.loadURL).toHaveBeenCalledTimes(1);
   });
 
+  it('estimates memory saved by sleeping from the last known usage', () => {
+    const { service, viewId, manager } = setup({ locked: () => false });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+
+    manager.recordMemory(service.id, 320);
+    // Live view: nothing is being "saved" yet.
+    expect(manager.estimatedSavedMB()).toBe(0);
+
+    manager.sleep(service.id);
+    expect(manager.estimatedSavedMB()).toBe(320);
+  });
+
   it('reports instance visibility from the last bounds sync', () => {
     const { viewId, manager, service } = setup({ locked: () => false });
     expect(manager.isInstanceVisible(service.id)).toBe(false);

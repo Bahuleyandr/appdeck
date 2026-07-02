@@ -675,9 +675,20 @@ export interface TriageItem {
   reason: string;
 }
 
+export interface ServiceMemoryRow {
+  instanceId: string;
+  displayName: string;
+  memoryMB: number;
+  state: 'active' | 'dozing' | 'sleeping';
+}
+
 export interface AppMetrics {
   totalMemoryMB: number;
   processes: Array<{ type: string; name: string; memoryMB: number }>;
+  /** Per-service attribution; present when collected with view-manager context. */
+  services?: ServiceMemoryRow[];
+  /** Session-scoped estimate of RAM freed by currently-slept services. */
+  estimatedSavedMB?: number;
 }
 
 export interface SyncStatus {

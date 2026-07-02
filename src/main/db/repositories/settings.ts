@@ -14,7 +14,9 @@ export type SettingKey =
   | 'auto_lock_minutes'
   | 'portable_mode_enabled'
   | 'portable_mode_root'
-  | 'peer_sync_serve';
+  | 'peer_sync_serve'
+  | 'show_memory_badges'
+  | 'notification_retention_days';
 
 const SETTING_KEYS: SettingKey[] = [
   'theme',
@@ -28,7 +30,9 @@ const SETTING_KEYS: SettingKey[] = [
   'auto_lock_minutes',
   'portable_mode_enabled',
   'portable_mode_root',
-  'peer_sync_serve'
+  'peer_sync_serve',
+  'show_memory_badges',
+  'notification_retention_days'
 ];
 
 const DEFAULTS: Record<SettingKey, string> = {
@@ -43,7 +47,9 @@ const DEFAULTS: Record<SettingKey, string> = {
   auto_lock_minutes: '',
   portable_mode_enabled: 'false',
   portable_mode_root: '',
-  peer_sync_serve: 'false'
+  peer_sync_serve: 'false',
+  show_memory_badges: 'false',
+  notification_retention_days: '30'
 };
 
 export function getSetting(db: Database.Database, key: SettingKey): string {

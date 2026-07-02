@@ -66,6 +66,8 @@ export type SettingsMap = {
   portable_mode_enabled: string;
   portable_mode_root: string;
   peer_sync_serve: string;
+  show_memory_badges: string;
+  notification_retention_days: string;
 };
 
 async function invoke<T>(channel: IpcChannel, payload?: unknown): Promise<T> {

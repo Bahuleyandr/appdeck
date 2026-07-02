@@ -451,7 +451,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     },
 
     'trust:status': () => buildTrustStatus(ctx.db, ctx.trackerBlocker.stats()),
-    'performance:status': () => collectPerformanceStatus(ctx.db),
+    'performance:status': () => collectPerformanceStatus(ctx.db, ctx.viewManager),
 
     'automation:list': () => listAutomations(ctx.db),
     'automation:upsert': (payload) => {
@@ -778,7 +778,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       return result;
     },
 
-    'metrics:get': () => collectMetrics(),
+    'metrics:get': () => collectMetrics(ctx.db, ctx.viewManager),
 
     'settings:get': () => getAllSettings(ctx.db),
     'settings:set': (payload) => {

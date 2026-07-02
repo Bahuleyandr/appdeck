@@ -511,7 +511,9 @@ export const ipcSchemas = {
       'auto_lock_minutes',
       'portable_mode_enabled',
       'portable_mode_root',
-      'peer_sync_serve'
+      'peer_sync_serve',
+      'show_memory_badges',
+      'notification_retention_days'
     ]),
     value: z.string()
   }),

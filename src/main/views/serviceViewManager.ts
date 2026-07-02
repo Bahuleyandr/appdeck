@@ -112,6 +112,9 @@ export class ServiceViewManager {
   private readonly configuredSessions = new WeakSet<Session>();
   // Recent crash timestamps per viewId, so a repeatedly-crashing pane stops auto-reloading.
   private readonly crashTimes = new Map<string, number[]>();
+  // Last observed working-set MB per instance; survives view destruction to power the
+  // "memory saved by sleeping" estimate.
+  private readonly lastKnownMemoryMB = new Map<string, number>();
   private activeInstanceId: string | null = null;
   private visibleIds = new Set<string>();
 
@@ -268,6 +271,34 @@ export class ServiceViewManager {
       .filter((managed) => managed.dozing && managed.dozeStartedAt !== null)
       .map((managed) => managed.dozeStartedAt as number);
     return times.length ? Math.min(...times) : null;
+  }
+
+  /** Live renderer pids per instance, for attributing OS memory to services. */
+  processIds(): Array<{ instanceId: string; pid: number; dozing: boolean }> {
+    return [...this.views.values()].map((managed) => ({
+      instanceId: managed.instanceId,
+      pid: managed.view.webContents.getOSProcessId(),
+      dozing: managed.dozing
+    }));
+  }
+
+  /** Remember the last observed memory of a live instance (fed by metrics collection). */
+  recordMemory(instanceId: string, memoryMB: number): void {
+    this.lastKnownMemoryMB.set(instanceId, memoryMB);
+  }
+
+  /**
+   * Session-scoped estimate of RAM freed by sleeping: the last observed usage of every
+   * instance that currently has no live renderer. Deliberately labeled an estimate in the UI.
+   */
+  estimatedSavedMB(): number {
+    let saved = 0;
+    for (const [instanceId, memoryMB] of this.lastKnownMemoryMB.entries()) {
+      if (!this.viewsForInstance(instanceId).length) {
+        saved += memoryMB;
+      }
+    }
+    return saved;
   }
 
   /** Whether any of the instance's panes were in the renderer's last visible-bounds sync. */
