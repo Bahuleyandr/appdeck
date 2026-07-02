@@ -23,7 +23,9 @@ export const rectSchema = z.object({
 });
 
 export const sleepPolicySchema = z.object({
-  idleMinutes: z.number().int().positive().nullable().optional()
+  idleMinutes: z.number().int().positive().nullable().optional(),
+  mode: z.enum(['auto', 'doze', 'deep']).optional(),
+  deepAfterMinutes: z.number().int().positive().nullable().optional()
 });
 export const serviceProxySchema = z
   .object({
@@ -437,9 +439,12 @@ export const ipcSchemas = {
   'notification:list': z
     .object({
       limit: z.number().int().positive().max(500).optional(),
-      unreadOnly: z.boolean().optional()
+      unreadOnly: z.boolean().optional(),
+      beforeId: z.number().int().positive().optional()
     })
     .optional(),
+  'notification:markSeen': z.void(),
+  'notification:lastSeen': z.void(),
   'notification:search': z.object({ q: z.string() }),
   'notification:markRead': z.object({ id: z.number().int().positive() }),
   'notification:markAllRead': z.void(),
@@ -485,6 +490,7 @@ export const ipcSchemas = {
     context: z.string().optional()
   }),
   'aiPrompt:extractTasks': z.void(),
+  'aiRun:list': z.object({ limit: z.number().int().positive().max(50).optional() }).optional(),
 
   'extension:list': z.void(),
   'extension:add': z.object({ path: z.string().min(1) }),
@@ -509,7 +515,9 @@ export const ipcSchemas = {
       'auto_lock_minutes',
       'portable_mode_enabled',
       'portable_mode_root',
-      'peer_sync_serve'
+      'peer_sync_serve',
+      'show_memory_badges',
+      'notification_retention_days'
     ]),
     value: z.string()
   }),
@@ -544,7 +552,8 @@ export const pushChannels = [
   'event:notification',
   'event:update-status',
   'event:settings-changed',
-  'event:custom-code-pending'
+  'event:custom-code-pending',
+  'event:ai-run'
 ] as const;
 
 export type PushChannel = (typeof pushChannels)[number];

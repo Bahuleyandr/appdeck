@@ -50,6 +50,32 @@ export function ServiceRail(): JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragging = useRef(false);
+  const showMemory = useAppStore((state) => state.settings.show_memory_badges === 'true');
+  const [memoryByService, setMemoryByService] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!showMemory) {
+      setMemoryByService({});
+      return;
+    }
+    let cancelled = false;
+    const poll = (): void => {
+      void api.metrics.get().then((metrics) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const row of metrics.services ?? []) {
+          next[row.instanceId] = row.memoryMB;
+        }
+        setMemoryByService(next);
+      });
+    };
+    poll();
+    const timer = window.setInterval(poll, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showMemory]);
 
   useEffect(() => {
     localStorage.setItem(WIDTH_KEY, String(width));
@@ -265,6 +291,14 @@ export function ServiceRail(): JSX.Element {
                   {service.disabled && (
                     <span className="rounded bg-elevated px-1.5 py-0.5 text-[11px] text-muted">
                       off
+                    </span>
+                  )}
+                  {showMemory && memoryByService[service.id] !== undefined && (
+                    <span
+                      className="rounded bg-elevated px-1.5 py-0.5 text-[11px] tabular-nums text-muted"
+                      title="Approximate renderer memory (0 = sleeping)"
+                    >
+                      {memoryByService[service.id]} MB
                     </span>
                   )}
                   {count > 0 && (

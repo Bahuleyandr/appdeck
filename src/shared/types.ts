@@ -103,6 +103,10 @@ export interface FocusRules {
 
 export interface SleepPolicy {
   idleMinutes?: number | null;
+  /** How an idle service is parked: doze keeps notifications alive; deep frees the renderer. */
+  mode?: 'auto' | 'doze' | 'deep';
+  /** Escalate a dozing service to deep sleep after this many further idle minutes. */
+  deepAfterMinutes?: number | null;
 }
 
 export interface ServiceProxy {
@@ -497,7 +501,7 @@ export interface Rect {
   height: number;
 }
 
-export type ServiceState = 'loading' | 'ready' | 'sleeping' | 'crashed';
+export type ServiceState = 'loading' | 'ready' | 'sleeping' | 'dozing' | 'crashed';
 
 export interface DeclarativeUnreadSpec {
   selector?: string;
@@ -664,6 +668,14 @@ export interface AiPromptRunResult {
   text: string;
 }
 
+export interface AiRun {
+  id: number;
+  kind: 'brief' | 'prompt';
+  title: string;
+  text: string;
+  created_at: number;
+}
+
 export interface TriageItem {
   notificationId: number;
   instanceId: string;
@@ -671,9 +683,20 @@ export interface TriageItem {
   reason: string;
 }
 
+export interface ServiceMemoryRow {
+  instanceId: string;
+  displayName: string;
+  memoryMB: number;
+  state: 'active' | 'dozing' | 'sleeping';
+}
+
 export interface AppMetrics {
   totalMemoryMB: number;
   processes: Array<{ type: string; name: string; memoryMB: number }>;
+  /** Per-service attribution; present when collected with view-manager context. */
+  services?: ServiceMemoryRow[];
+  /** Session-scoped estimate of RAM freed by currently-slept services. */
+  estimatedSavedMB?: number;
 }
 
 export interface SyncStatus {

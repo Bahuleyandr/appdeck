@@ -46,9 +46,11 @@ import {
 } from '../db/repositories/workspaces.js';
 import {
   clearNotifications,
+  inboxLastSeenAt,
   insertNotification,
   listNotifications,
   markAllNotificationsRead,
+  markInboxSeen,
   markNotificationRead,
   searchNotifications,
   snoozeNotification,
@@ -86,6 +88,7 @@ import {
   listAiPrompts,
   upsertAiPrompt
 } from '../db/repositories/aiPrompts.js';
+import { listAiRuns } from '../db/repositories/aiRuns.js';
 import {
   deleteAutomation,
   getAutomation,
@@ -451,7 +454,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     },
 
     'trust:status': () => buildTrustStatus(ctx.db, ctx.trackerBlocker.stats()),
-    'performance:status': () => collectPerformanceStatus(ctx.db),
+    'performance:status': () => collectPerformanceStatus(ctx.db, ctx.viewManager),
 
     'automation:list': () => listAutomations(ctx.db),
     'automation:upsert': (payload) => {
@@ -695,8 +698,12 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'notification:list': (payload) => {
       const input = parseIpcPayload('notification:list', payload);
-      return listNotifications(ctx.db, input?.limit, input?.unreadOnly);
+      return listNotifications(ctx.db, input?.limit, input?.unreadOnly, input?.beforeId);
     },
+    'notification:markSeen': () => {
+      markInboxSeen(ctx.db);
+    },
+    'notification:lastSeen': () => ({ at: inboxLastSeenAt(ctx.db) }),
     'notification:search': (payload) =>
       searchNotifications(ctx.db, parseIpcPayload('notification:search', payload).q),
     'notification:markRead': (payload) => {
@@ -748,6 +755,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       return ctx.aiService.runPrompt(prompt, input.context);
     },
     'aiPrompt:extractTasks': () => ctx.aiService.extractTasks(),
+    'aiRun:list': (payload) => {
+      const input = parseIpcPayload('aiRun:list', payload);
+      return listAiRuns(ctx.db, input?.limit);
+    },
 
     'extension:list': () => listExtensions(ctx.db),
     'extension:add': (payload) => {
@@ -778,7 +789,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       return result;
     },
 
-    'metrics:get': () => collectMetrics(),
+    'metrics:get': () => collectMetrics(ctx.db, ctx.viewManager),
 
     'settings:get': () => getAllSettings(ctx.db),
     'settings:set': (payload) => {

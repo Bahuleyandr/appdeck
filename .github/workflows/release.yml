@@ -37,3 +37,25 @@ jobs:
           # leave unset for unsigned builds. CSC_LINK = base64 of a .pfx (Win) or .p12 (mac).
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # Attach per-OS SHA-256 checksums so downloads are verifiable even while builds are
+      # unsigned. Runs only for tag builds (the draft release exists then).
+      - name: Attach checksums
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          cd dist
+          out="SHA256SUMS-${RUNNER_OS}.txt"
+          : > "$out"
+          for f in *.exe *.dmg *.zip *.AppImage *.deb *.blockmap; do
+            [ -f "$f" ] || continue
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$f" >> "$out"
+            else
+              shasum -a 256 "$f" >> "$out"
+            fi
+          done
+          if [ ! -s "$out" ]; then echo "No artifacts to checksum"; exit 0; fi
+          cat "$out"
+          gh release upload "${GITHUB_REF_NAME}" "$out" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

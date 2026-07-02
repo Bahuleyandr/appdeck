@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  Archive,
   BellMinus,
   BellOff,
   CheckCheck,
@@ -7,11 +8,13 @@ import {
   Copy,
   Filter,
   Reply,
+  Search,
   Sparkles,
   Trash2,
   Wand2,
   X
 } from 'lucide-react';
+import type { AiRun, NotificationRecord } from '../../shared/types';
 import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
 
@@ -48,10 +51,70 @@ export function InboxPanel(): JSX.Element | null {
   const [suggestions, setSuggestions] = useState<Array<{ instanceId: string; reason: string }> | null>(
     null
   );
+  const [archiveMode, setArchiveMode] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState('');
+  const [archive, setArchive] = useState<NotificationRecord[]>([]);
+  const [archiveDone, setArchiveDone] = useState(false);
+  const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
+  const [latestRun, setLatestRun] = useState<AiRun | null>(null);
+  const [runDismissed, setRunDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!inboxOpen) return;
+    void api.notifications.lastSeen().then((seen) => setLastSeenAt(seen.at));
+    void api.aiRuns.list(1).then((runs) => setLatestRun(runs[0] ?? null));
+    const unsubscribe = api.on('event:ai-run', (payload) => {
+      setLatestRun(payload as AiRun);
+      setRunDismissed(false);
+    });
+    return unsubscribe;
+  }, [inboxOpen]);
+
+  // Browse mode groups by service (alphabetical, newest first inside a group); search results
+  // stay in relevance order.
+  const sortForBrowse = (records: NotificationRecord[]): NotificationRecord[] =>
+    [...records].sort((a, b) => {
+      const nameA = services.find((s) => s.id === a.instance_id)?.display_name ?? a.instance_id;
+      const nameB = services.find((s) => s.id === b.instance_id)?.display_name ?? b.instance_id;
+      return nameA.localeCompare(nameB) || b.created_at - a.created_at;
+    });
+
+  useEffect(() => {
+    if (!inboxOpen || !archiveMode) return;
+    const query = archiveQuery.trim();
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const request = query ? api.notifications.search(query) : api.notifications.list(200);
+      void request.then((records) => {
+        if (cancelled) return;
+        setArchive(query ? records : sortForBrowse(records));
+        setArchiveDone(records.length < 200 || Boolean(query));
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [inboxOpen, archiveMode, archiveQuery, services]);
+
   if (!inboxOpen) return null;
 
   const service = (instanceId: string) => services.find((candidate) => candidate.id === instanceId);
   const serviceName = (instanceId: string): string => service(instanceId)?.display_name ?? 'Service';
+
+  const close = (): void => {
+    void api.notifications.markSeen();
+    setInboxOpen(false);
+  };
+
+  const loadOlderArchive = (): void => {
+    if (!archive.length) return;
+    const cursor = Math.min(...archive.map((record) => record.id));
+    void api.notifications.list(200, false, cursor).then((records) => {
+      setArchive((current) => sortForBrowse([...current, ...records]));
+      if (records.length < 200) setArchiveDone(true);
+    });
+  };
   const visible = unreadOnly
     ? notifications.filter((notification) => !notification.read_at)
     : notifications;
@@ -116,8 +179,15 @@ export function InboxPanel(): JSX.Element | null {
   return (
     <aside className="flex h-full w-96 shrink-0 flex-col border-l border-line bg-panel">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-3">
-        <div className="text-sm font-semibold">Inbox</div>
+        <div className="text-sm font-semibold">{archiveMode ? 'Archive' : 'Inbox'}</div>
         <div className="flex items-center gap-1">
+          <button
+            className={`icon-button ${archiveMode ? 'border-accent text-white' : ''}`}
+            title="Archive — everything, searchable"
+            onClick={() => setArchiveMode((value) => !value)}
+          >
+            <Archive size={15} />
+          </button>
           <button
             className={`icon-button ${unreadOnly ? 'border-accent text-white' : ''}`}
             title="Unread only"
@@ -154,7 +224,7 @@ export function InboxPanel(): JSX.Element | null {
           <button className="icon-button" title="Clear all" onClick={() => void clearNotifications()}>
             <Trash2 size={15} />
           </button>
-          <button className="icon-button" title="Close" onClick={() => setInboxOpen(false)}>
+          <button className="icon-button" title="Close" onClick={close}>
             <X size={15} />
           </button>
         </div>
@@ -162,6 +232,22 @@ export function InboxPanel(): JSX.Element | null {
       {brief !== null && (
         <div className="max-h-56 shrink-0 overflow-y-auto border-b border-line bg-shell p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink">
           {busy ? 'Thinking…' : brief}
+        </div>
+      )}
+      {latestRun && !runDismissed && !archiveMode && brief === null && (
+        <div className="shrink-0 border-b border-line bg-shell p-3 text-xs">
+          <div className="mb-1.5 flex items-center justify-between font-semibold text-ink">
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={12} className="text-accent" />
+              {latestRun.title} · {new Date(latestRun.created_at).toLocaleString()}
+            </span>
+            <button className="text-muted hover:text-ink" onClick={() => setRunDismissed(true)}>
+              <X size={13} />
+            </button>
+          </div>
+          <div className="max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed text-muted">
+            {latestRun.text}
+          </div>
         </div>
       )}
       {suggestions !== null && (
@@ -197,17 +283,53 @@ export function InboxPanel(): JSX.Element | null {
         </div>
       )}
       <div className="flex-1 overflow-y-auto">
-        {ordered.length === 0 && (
-          <div className="p-6 text-center text-xs text-muted">No notifications.</div>
+        {archiveMode && (
+          <div className="sticky top-0 z-10 border-b border-line bg-panel p-2">
+            <div className="relative">
+              <Search size={13} className="pointer-events-none absolute left-2 top-2 text-muted" />
+              <input
+                className="field w-full py-1.5 pl-7 text-xs"
+                placeholder="Search every notification…"
+                autoFocus
+                value={archiveQuery}
+                onChange={(event) => setArchiveQuery(event.target.value)}
+              />
+            </div>
+          </div>
         )}
-        {ordered.map((notification) => {
+        {(archiveMode ? archive : ordered).length === 0 && (
+          <div className="p-6 text-center text-xs text-muted">
+            {archiveMode && archiveQuery.trim() ? 'No matches.' : 'No notifications.'}
+          </div>
+        )}
+        {(archiveMode ? archive : ordered).map((notification, index, list) => {
           const svc = service(notification.instance_id);
-          const priority = priorities[notification.id]?.priority;
+          const priority = archiveMode ? undefined : priorities[notification.id]?.priority;
+          const showSeenDivider =
+            !archiveMode &&
+            lastSeenAt !== null &&
+            index > 0 &&
+            notification.created_at <= lastSeenAt &&
+            (list[index - 1]?.created_at ?? 0) > lastSeenAt;
+          const showGroupHeader =
+            archiveMode && notification.instance_id !== list[index - 1]?.instance_id;
           return (
             <div
               key={notification.id}
               className={`group border-b border-line/60 ${notification.read_at ? 'opacity-60' : ''}`}
             >
+              {showSeenDivider && (
+                <div className="flex items-center gap-2 px-3 py-1 text-[10px] uppercase tracking-wide text-muted">
+                  <span className="h-px flex-1 bg-line" />
+                  Seen before
+                  <span className="h-px flex-1 bg-line" />
+                </div>
+              )}
+              {showGroupHeader && (
+                <div className="bg-shell px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {serviceName(notification.instance_id)}
+                </div>
+              )}
               <div className="flex items-start gap-2 px-3 py-2 hover:bg-shell">
                 {priority && (
                   <span
@@ -220,7 +342,7 @@ export function InboxPanel(): JSX.Element | null {
                   onClick={() => {
                     void markNotificationRead(notification.id);
                     void selectService(notification.instance_id);
-                    setInboxOpen(false);
+                    close();
                   }}
                 >
                   <span className="truncate text-xs font-semibold text-ink">
@@ -228,7 +350,9 @@ export function InboxPanel(): JSX.Element | null {
                   </span>
                   <span className="truncate text-xs text-muted">{notification.body}</span>
                   <span className="text-[10px] uppercase tracking-wide text-muted">
-                    {serviceName(notification.instance_id)}
+                    {archiveMode
+                      ? new Date(notification.created_at).toLocaleString()
+                      : serviceName(notification.instance_id)}
                   </span>
                 </button>
                 <div className="flex shrink-0 flex-col gap-1 opacity-0 transition group-hover:opacity-100">
@@ -289,6 +413,14 @@ export function InboxPanel(): JSX.Element | null {
             </div>
           );
         })}
+        {archiveMode && !archiveDone && !archiveQuery.trim() && archive.length > 0 && (
+          <button
+            className="w-full border-b border-line/60 px-3 py-2 text-center text-xs text-muted hover:bg-shell hover:text-ink"
+            onClick={loadOlderArchive}
+          >
+            Load older notifications
+          </button>
+        )}
       </div>
     </aside>
   );
