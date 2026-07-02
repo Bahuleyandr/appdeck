@@ -23,7 +23,9 @@ export const rectSchema = z.object({
 });
 
 export const sleepPolicySchema = z.object({
-  idleMinutes: z.number().int().positive().nullable().optional()
+  idleMinutes: z.number().int().positive().nullable().optional(),
+  mode: z.enum(['auto', 'doze', 'deep']).optional(),
+  deepAfterMinutes: z.number().int().positive().nullable().optional()
 });
 export const serviceProxySchema = z
   .object({

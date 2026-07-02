@@ -119,19 +119,24 @@ describe('focus mode enforcement', () => {
       settings: { sleepIdleMinutes: 1 }
     });
 
-    const sleep = vi.fn();
+    const doze = vi.fn();
     const fakeViews = {
       trimHiddenViews: vi.fn(),
       // Two minutes idle: beyond the focus override (1m), well below the default policy (30m).
       getLastActiveAt: () => Date.now() - 2 * 60_000,
       isFocused: () => false,
       isAudible: () => false,
-      sleep
+      isDozing: () => false,
+      dozeStartedAt: () => null,
+      isInstanceVisible: () => false,
+      sleep: vi.fn(),
+      doze
     } as unknown as ServiceViewManager;
 
     new SleepManager(context.db, fakeViews).tick();
 
-    expect(sleep).toHaveBeenCalledWith(service.id);
+    // Unmuted service → the focus override accelerates the doze tier.
+    expect(doze).toHaveBeenCalledWith(service.id);
   });
 
   it('does not sleep never-sleep services even during a focus mode', () => {
@@ -147,17 +152,23 @@ describe('focus mode enforcement', () => {
     });
 
     const sleep = vi.fn();
+    const doze = vi.fn();
     const fakeViews = {
       trimHiddenViews: vi.fn(),
       getLastActiveAt: () => Date.now() - 10 * 60_000,
       isFocused: () => false,
       isAudible: () => false,
-      sleep
+      isDozing: () => false,
+      dozeStartedAt: () => null,
+      isInstanceVisible: () => false,
+      sleep,
+      doze
     } as unknown as ServiceViewManager;
 
     new SleepManager(context.db, fakeViews).tick();
 
     expect(sleep).not.toHaveBeenCalled();
+    expect(doze).not.toHaveBeenCalled();
   });
 
   it('focusModeStatus evaluates schedules against an injected clock', () => {

@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types.js';
 import { getServiceInstance, setServiceLastUrl } from '../db/repositories/serviceInstances.js';
 import { isCustomCodeApproved } from '../services/customCode.js';
+import { sleepTier } from '../services/sleepPolicy.js';
 import { ensureDefaultTab, getTab, setTabUrlTitle } from '../db/repositories/serviceTabs.js';
 import { upsertDownload } from '../db/repositories/downloads.js';
 import { permissionDecision } from '../db/repositories/permissionPolicies.js';
@@ -84,6 +85,8 @@ interface ManagedView {
   attached: boolean;
   lastActiveAt: number;
   hiddenAt: number | null;
+  dozing: boolean;
+  dozeStartedAt: number | null;
 }
 
 export const HIDDEN_VIEW_MEMORY_TRIM_MS = 5 * 60_000;
@@ -235,6 +238,48 @@ export class ServiceViewManager {
     this.emitState(instanceId, 'sleeping');
   }
 
+  /**
+   * Doze keeps the renderer process alive but detached, throttled, and muted. The service
+   * preload (and its notification shim) keeps running, so notifications survive — and waking
+   * is a plain re-attach with no reload. Re-attach happens in attach() on the next bounds sync.
+   */
+  doze(instanceId: string): void {
+    const targets = this.viewsForInstance(instanceId).filter((managed) => !managed.dozing);
+    if (!targets.length) {
+      return;
+    }
+    for (const managed of targets) {
+      this.detach(managed);
+      managed.dozing = true;
+      managed.dozeStartedAt = Date.now();
+      managed.view.webContents.setAudioMuted(true);
+      managed.view.webContents.setBackgroundThrottling(true);
+    }
+    this.emitState(instanceId, 'dozing');
+  }
+
+  isDozing(instanceId: string): boolean {
+    return this.viewsForInstance(instanceId).some((managed) => managed.dozing);
+  }
+
+  /** Earliest doze start across the instance's views, or null when it is not dozing. */
+  dozeStartedAt(instanceId: string): number | null {
+    const times = this.viewsForInstance(instanceId)
+      .filter((managed) => managed.dozing && managed.dozeStartedAt !== null)
+      .map((managed) => managed.dozeStartedAt as number);
+    return times.length ? Math.min(...times) : null;
+  }
+
+  /** Whether any of the instance's panes were in the renderer's last visible-bounds sync. */
+  isInstanceVisible(instanceId: string): boolean {
+    for (const viewId of this.visibleIds) {
+      if (instanceIdOf(viewId) === instanceId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   wake(instanceId: string): void {
     // The renderer recreates the active tab on the next bounds sync; just flip the slot state.
     this.emitState(instanceId, 'loading');
@@ -279,8 +324,13 @@ export class ServiceViewManager {
 
   trimHiddenViews(maxHiddenMs = HIDDEN_VIEW_MEMORY_TRIM_MS, now = Date.now()): number {
     let trimmed = 0;
-    const affectedInstances = new Set<string>();
+    const destroyedInstances = new Set<string>();
+    const dozedInstances = new Set<string>();
     for (const managed of [...this.views.values()]) {
+      if (managed.dozing) {
+        // Already parked; escalation to deep sleep is SleepManager's decision.
+        continue;
+      }
       const active = this.activeInstanceId === managed.instanceId;
       const audible = managed.view.webContents.isCurrentlyAudible();
       if (
@@ -292,11 +342,19 @@ export class ServiceViewManager {
       ) {
         continue;
       }
-      affectedInstances.add(managed.instanceId);
+      const instance = getServiceInstance(this.db, managed.instanceId);
+      if (instance && sleepTier(instance) === 'doze') {
+        dozedInstances.add(managed.instanceId);
+        continue;
+      }
+      destroyedInstances.add(managed.instanceId);
       this.destroyView(managed.viewId);
       trimmed += 1;
     }
-    for (const instanceId of affectedInstances) {
+    for (const instanceId of dozedInstances) {
+      this.doze(instanceId);
+    }
+    for (const instanceId of destroyedInstances) {
       if (!this.viewsForInstance(instanceId).length) {
         this.emitState(instanceId, 'sleeping');
       }
@@ -367,7 +425,9 @@ export class ServiceViewManager {
       view,
       attached: false,
       lastActiveAt: Date.now(),
-      hiddenAt: null
+      hiddenAt: null,
+      dozing: false,
+      dozeStartedAt: null
     };
     this.views.set(viewId, managed);
     this.configureWebContents(instance, managed);
@@ -630,6 +690,14 @@ export class ServiceViewManager {
     }
     if (!this.window || this.window.isDestroyed() || managed.attached) {
       return;
+    }
+    if (managed.dozing) {
+      // Instant wake: same renderer, no reload — just un-mute and stop counting doze time.
+      managed.dozing = false;
+      managed.dozeStartedAt = null;
+      managed.view.webContents.setAudioMuted(false);
+      managed.lastActiveAt = Date.now();
+      this.emitState(managed.instanceId, 'ready');
     }
     this.window.contentView.addChildView(managed.view);
     managed.attached = true;

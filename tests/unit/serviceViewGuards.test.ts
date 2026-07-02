@@ -37,6 +37,8 @@ const electronMock = vi.hoisted(() => {
       insertCSS: ReturnType<typeof vi.fn>;
       setUserAgent: ReturnType<typeof vi.fn>;
       setZoomFactor: ReturnType<typeof vi.fn>;
+      setAudioMuted: ReturnType<typeof vi.fn>;
+      setBackgroundThrottling: ReturnType<typeof vi.fn>;
       setWindowOpenHandler: ReturnType<typeof vi.fn>;
       on: (event: string, handler: (...args: unknown[]) => void) => void;
       close: ReturnType<typeof vi.fn>;
@@ -56,6 +58,8 @@ const electronMock = vi.hoisted(() => {
         insertCSS: vi.fn(() => Promise.resolve()),
         setUserAgent: vi.fn(),
         setZoomFactor: vi.fn(),
+        setAudioMuted: vi.fn(),
+        setBackgroundThrottling: vi.fn(),
         setWindowOpenHandler: vi.fn(),
         on: (event, handler) => {
           handlers.set(event, handler);
@@ -197,5 +201,42 @@ describe('service view guards', () => {
       true
     );
     expect(view.webContents.insertCSS).toHaveBeenCalledWith('body { outline: 1px solid red; }');
+  });
+
+  it('doze keeps the view alive but detached, muted, and throttled; re-attach un-dozes', () => {
+    const { service, viewId, manager, sendPush } = setup({ locked: () => false });
+
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const view = electronMock.state.createdViews[0];
+    if (!view) throw new Error('Expected a created view');
+
+    manager.doze(service.id);
+
+    expect(electronMock.state.removeChildView).toHaveBeenCalled();
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(view.webContents.setAudioMuted).toHaveBeenCalledWith(true);
+    expect(view.webContents.setBackgroundThrottling).toHaveBeenCalledWith(true);
+    expect(manager.isDozing(service.id)).toBe(true);
+    expect(manager.dozeStartedAt(service.id)).toBeTypeOf('number');
+    expect(sendPush).toHaveBeenCalledWith('event:service-state', {
+      instanceId: service.id,
+      state: 'dozing'
+    });
+
+    // Selecting the pane again re-sends bounds: the SAME view re-attaches instantly (no reload).
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    expect(electronMock.state.createdViews).toHaveLength(1);
+    expect(view.webContents.setAudioMuted).toHaveBeenCalledWith(false);
+    expect(manager.isDozing(service.id)).toBe(false);
+    expect(view.webContents.loadURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports instance visibility from the last bounds sync', () => {
+    const { viewId, manager, service } = setup({ locked: () => false });
+    expect(manager.isInstanceVisible(service.id)).toBe(false);
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    expect(manager.isInstanceVisible(service.id)).toBe(true);
+    manager.setBounds([], []);
+    expect(manager.isInstanceVisible(service.id)).toBe(false);
   });
 });
