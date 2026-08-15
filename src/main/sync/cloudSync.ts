@@ -35,7 +35,11 @@ export class CloudSyncService {
   private inflight: Promise<SyncResult> | null = null;
   private lastError: string | undefined;
 
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    /** Called when a scheduled background sync applied remote changes locally. */
+    private readonly onApplied: (result: SyncResult) => void = () => {}
+  ) {}
 
   status(): { configured: boolean; email?: string; lastSyncAt?: number; lastError?: string } {
     const email = getMeta(this.db, 'cloud_email') ?? undefined;
@@ -91,6 +95,10 @@ export class CloudSyncService {
     this.token = null;
     setMeta(this.db, 'cloud_token_safe', '');
     setMeta(this.db, 'cloud_root_safe', '');
+    setMeta(this.db, 'cloud_email', '');
+    setMeta(this.db, 'cloud_url', '');
+    setMeta(this.db, 'cloud_revision', '');
+    setMeta(this.db, 'cloud_last_at', '');
   }
 
   // Deliberately not `async`: callers awaiting a coalesced call must receive the SAME in-flight
@@ -164,7 +172,17 @@ export class CloudSyncService {
       return;
     }
     if (this.debounce) clearTimeout(this.debounce);
-    this.debounce = setTimeout(() => void this.syncNow().catch(() => undefined), CLOUD_DEBOUNCE_MS);
+    this.debounce = setTimeout(
+      () =>
+        void this.syncNow()
+          .then((result) => {
+            if (result.applied > 0) {
+              this.onApplied(result);
+            }
+          })
+          .catch(() => undefined),
+      CLOUD_DEBOUNCE_MS
+    );
     this.debounce.unref();
   }
 

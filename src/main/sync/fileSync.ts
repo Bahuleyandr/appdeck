@@ -23,7 +23,11 @@ export class FileSyncService {
   /** Ignore watcher events until this time — they are echoes of our own write. */
   private suppressWatcherUntil = 0;
 
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    /** Called when a background sync (watcher/scheduled) applied remote changes locally. */
+    private readonly onApplied: (result: SyncResult) => void = () => {}
+  ) {}
 
   /** Resume watching on startup if sync is configured and the key is recoverable without a passphrase. */
   init(): void {
@@ -150,7 +154,9 @@ export class FileSyncService {
       clearTimeout(this.localDebounce);
     }
     this.localDebounce = setTimeout(() => {
-      void this.syncNow().catch(() => undefined);
+      void this.syncNow()
+        .then((result) => this.notifyApplied(result))
+        .catch(() => undefined);
     }, LOCAL_CHANGE_DEBOUNCE_MS);
     this.localDebounce.unref();
   }
@@ -167,10 +173,18 @@ export class FileSyncService {
         clearTimeout(this.watchDebounce);
       }
       this.watchDebounce = setTimeout(() => {
-        void this.syncNow().catch(() => undefined);
+        void this.syncNow()
+          .then((result) => this.notifyApplied(result))
+          .catch(() => undefined);
       }, WATCH_DEBOUNCE_MS);
       this.watchDebounce.unref();
     });
+  }
+
+  private notifyApplied(result: SyncResult): void {
+    if (result.applied > 0) {
+      this.onApplied(result);
+    }
   }
 
   dispose(): void {

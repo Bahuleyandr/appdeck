@@ -133,9 +133,16 @@ if (!gotLock) {
         },
         () => getBoolSetting(db, 'global_dnd')
       );
-      const fileSyncService = new FileSyncService(db);
+      const sendDataChanged = (): void => {
+        sendPush('event:data-changed');
+        fileSyncService.scheduleSync();
+        cloudSyncService.scheduleSync();
+      };
+      // Background syncs (folder watcher, debounced pushes) can apply remote changes with no
+      // IPC call in flight — surface those to the renderer the same way local edits are.
+      const fileSyncService = new FileSyncService(db, () => sendDataChanged());
       fileSyncService.init();
-      const cloudSyncService = new CloudSyncService(db);
+      const cloudSyncService = new CloudSyncService(db, () => sendDataChanged());
       const aiService = new AiService(db);
       const updaterService = new UpdaterService(sendPush);
       updaterService.init();
@@ -151,11 +158,7 @@ if (!gotLock) {
         db,
         viewManager,
         sendPush,
-        sendDataChanged: () => {
-          sendPush('event:data-changed');
-          fileSyncService.scheduleSync();
-          cloudSyncService.scheduleSync();
-        },
+        sendDataChanged,
         aiService,
         notifyUser: (title, body) => {
           if (getBoolSetting(db, 'global_dnd') || !Notification.isSupported()) {
@@ -217,11 +220,7 @@ if (!gotLock) {
         updaterService,
         peerSyncRuntime,
         sendPush,
-        sendDataChanged: () => {
-          sendPush('event:data-changed');
-          fileSyncService.scheduleSync();
-          cloudSyncService.scheduleSync();
-        },
+        sendDataChanged,
         onSettingsChanged: () => {
           trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
           lockService?.setIdleTimeoutMinutes(getSetting(db, 'auto_lock_minutes'));

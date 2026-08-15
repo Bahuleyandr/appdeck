@@ -665,7 +665,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       const input = parseIpcPayload('sync:importVault', payload);
       return ctx.fileSyncService.importVault(input.sourcePath, input.passphrase);
     },
-    'sync:now': () => ctx.fileSyncService.syncNow(),
+    'sync:now': async () => {
+      const result = await ctx.fileSyncService.syncNow();
+      if (result.applied > 0) {
+        ctx.sendDataChanged();
+      }
+      return result;
+    },
 
     'task:list': () => listTasks(ctx.db),
     'task:create': (payload) => createTask(ctx.db, parseIpcPayload('task:create', payload).title),
@@ -824,7 +830,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       ctx.cloudSyncService.logout();
       ctx.sendDataChanged();
     },
-    'account:syncNow': () => ctx.cloudSyncService.syncNow()
+    'account:syncNow': async () => {
+      const result = await ctx.cloudSyncService.syncNow();
+      if (result.applied > 0) {
+        ctx.sendDataChanged();
+      }
+      return result;
+    }
   };
 
   for (const [channel, handler] of Object.entries(handlers) as Array<[IpcChannel, Handler]>) {
