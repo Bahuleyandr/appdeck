@@ -47,6 +47,8 @@ export function logLine(level: 'info' | 'warn' | 'error', scope: string, message
 
 export function logError(scope: string, error: unknown): void {
   const detail =
-    error instanceof Error ? `${error.message}${error.stack ? `\n${error.stack}` : ''}` : String(error);
+    error instanceof Error
+      ? `${error.message}${error.stack ? `\n${error.stack}` : ''}`
+      : String(error);
   logLine('error', scope, detail);
 }
