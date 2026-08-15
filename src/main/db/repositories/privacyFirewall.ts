@@ -25,14 +25,24 @@ export interface FirewallMatchInput {
   permission?: string;
 }
 
+// Rules are consulted several times per network request; cache them per connection and
+// invalidate on writes so the hot path stays off SQLite.
+const rulesCache = new WeakMap<Database.Database, PrivacyFirewallRule[]>();
+
 export function listFirewallRules(db: Database.Database): PrivacyFirewallRule[] {
-  return (
+  const cached = rulesCache.get(db);
+  if (cached) {
+    return cached;
+  }
+  const rules = (
     db
       .prepare(
         'SELECT * FROM privacy_firewall_rules ORDER BY enabled DESC, service_instance_id ASC, rule_type ASC, pattern ASC'
       )
       .all() as FirewallRow[]
   ).map(mapRule);
+  rulesCache.set(db, rules);
+  return rules;
 }
 
 export function getFirewallRule(db: Database.Database, id: string): PrivacyFirewallRule | null {
@@ -70,6 +80,7 @@ export function upsertFirewallRule(
     input.created_at ?? now,
     now
   );
+  rulesCache.delete(db);
   const saved = getFirewallRule(db, id);
   if (!saved) throw new Error('Failed to save firewall rule');
   return saved;
@@ -77,6 +88,7 @@ export function upsertFirewallRule(
 
 export function deleteFirewallRule(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM privacy_firewall_rules WHERE id = ?').run(id);
+  rulesCache.delete(db);
 }
 
 export function testFirewallRules(
@@ -85,7 +97,11 @@ export function testFirewallRules(
   serviceInstanceId?: string | null,
   input: Omit<FirewallMatchInput, 'url' | 'serviceInstanceId'> = {}
 ): PrivacyFirewallTestResult {
-  const matched = matchFirewallRule(listFirewallRules(db), {
+  const rules = listFirewallRules(db);
+  if (!rules.length) {
+    return { matched: false, action: 'allow', rule: null };
+  }
+  const matched = matchFirewallRule(rules, {
     ...input,
     url,
     serviceInstanceId

@@ -441,7 +441,6 @@ export class ServiceViewManager {
         : null;
     const partition = session.fromPartition(instance.partition_key);
     this.configureSession(partition, instance);
-    this.trackerBlocker?.apply(partition);
     void this.extensionManager?.applyTo(partition);
     const view = new WebContentsView({
       webPreferences: {
@@ -510,6 +509,8 @@ export class ServiceViewManager {
       return;
     }
     this.configuredSessions.add(partition);
+    // Electron keeps ONE onBeforeRequest listener per session, so firewall and tracker-block
+    // logic must share this handler — registering them separately silently drops the first.
     partition.webRequest.onBeforeRequest((details, callback) => {
       const script = testFirewallRules(this.db, details.url, instance.id, {
         ruleType: 'script',
@@ -523,7 +524,16 @@ export class ServiceViewManager {
         ruleType: 'domain',
         resourceType: details.resourceType
       });
-      callback({ cancel: domain.matched && domain.action !== 'allow' });
+      if (domain.matched && domain.action !== 'allow') {
+        callback({ cancel: true });
+        return;
+      }
+      if (this.trackerBlocker?.shouldBlock(details.url)) {
+        this.trackerBlocker.recordBlocked(details.url);
+        callback({ cancel: true });
+        return;
+      }
+      callback({ cancel: false });
     });
     partition.webRequest.onBeforeSendHeaders((details, callback) => {
       const cookie = testFirewallRules(this.db, details.url, instance.id, { ruleType: 'cookie' });

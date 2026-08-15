@@ -102,11 +102,16 @@ const electronMock = vi.hoisted(() => {
 
 vi.mock('electron', () => electronMock.module);
 
+import {
+  deleteFirewallRule,
+  upsertFirewallRule
+} from '../../src/main/db/repositories/privacyFirewall.js';
 import { createServiceInstance, updateServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
 import { ensureDefaultTab } from '../../src/main/db/repositories/serviceTabs.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { RecipeLoader } from '../../src/main/recipes/loader.js';
 import { approveCustomCode } from '../../src/main/services/customCode.js';
+import { TrackerBlocker } from '../../src/main/services/trackerBlock.js';
 import { ServiceViewManager } from '../../src/main/views/serviceViewManager.js';
 import type { BrowserWindow } from 'electron';
 import { createTestDb } from './helpers.js';
@@ -123,7 +128,7 @@ function fakeWindow(): BrowserWindow {
   } as unknown as BrowserWindow;
 }
 
-function setup(options: { locked: () => boolean }) {
+function setup(options: { locked: () => boolean; trackerBlocker?: TrackerBlocker }) {
   const context = createTestDb();
   const workspace = listWorkspaces(context.db)[0];
   if (!workspace) throw new Error('Expected default workspace');
@@ -143,7 +148,7 @@ function setup(options: { locked: () => boolean }) {
     () => {},
     options.locked,
     null,
-    null,
+    options.trackerBlocker ?? null,
     fakeWindow()
   );
   return { context, service, viewId: `${service.id}#${tab.id}`, manager, sendPush };
@@ -244,6 +249,48 @@ describe('service view guards', () => {
 
     manager.sleep(service.id);
     expect(manager.estimatedSavedMB()).toBe(320);
+  });
+
+  it('enforces firewall rules and tracker blocking from one merged onBeforeRequest handler', () => {
+    const blocker = new TrackerBlocker();
+    blocker.setEnabled(true);
+    const { context, viewId, manager } = setup({ locked: () => false, trackerBlocker: blocker });
+
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const partition = [...electronMock.state.partitions.values()][0] as {
+      webRequest: { onBeforeRequest: ReturnType<typeof vi.fn> };
+    };
+    expect(partition.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1);
+    const handler = partition.webRequest.onBeforeRequest.mock.calls[0]?.[0] as (
+      details: { url: string; resourceType: string },
+      callback: (response: { cancel?: boolean }) => void
+    ) => void;
+
+    const cancels = (url: string): boolean => {
+      let cancelled = false;
+      handler({ url, resourceType: 'script' }, (response) => {
+        cancelled = Boolean(response.cancel);
+      });
+      return cancelled;
+    };
+
+    // Tracker blocking works without any firewall rules configured.
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
+    expect(blocker.stats().blockedTotal).toBe(1);
+    expect(cancels('https://blocked.example.com/app.js')).toBe(false);
+
+    // Firewall rules apply through the same handler, and the rule cache sees writes.
+    const rule = upsertFirewallRule(context.db, {
+      rule_type: 'domain',
+      pattern: 'blocked.example.com',
+      action: 'block'
+    });
+    expect(cancels('https://blocked.example.com/app.js')).toBe(true);
+    deleteFirewallRule(context.db, rule.id);
+    expect(cancels('https://blocked.example.com/app.js')).toBe(false);
+
+    blocker.setEnabled(false);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
   });
 
   it('reports instance visibility from the last bounds sync', () => {
