@@ -130,8 +130,9 @@ export function testAutomation(
 /**
  * Start timestamp of the schedule window that contains `now`, or null when none does. Used to
  * fire schedule automations once per occurrence instead of on every runtime tick inside the
- * window. Overnight windows (from > to) that we are in the early-morning tail of started
- * yesterday. With overlapping slots the most recent start wins.
+ * window. An overnight window (from > to) belongs to the day it STARTED: with days=[Mon] and
+ * 22:00-06:00, Tue 02:00 is still Monday's occurrence and the slot start is Mon 22:00. With
+ * overlapping slots the most recent start wins.
  */
 export function scheduleSlotStart(
   schedule: Array<{ from: string; to: string; days: number[] }>,
@@ -161,19 +162,13 @@ export function scheduleSlotStart(
   return latest;
 }
 
+// Active exactly when some slot's window contains `now`, sharing scheduleSlotStart's overnight
+// model so trigger matching and per-occurrence dedup can never disagree.
 function isScheduleActive(
   schedule: Array<{ from: string; to: string; days: number[] }>,
   now: Date
 ): boolean {
-  if (schedule.length === 0) return false;
-  const day = now.getDay();
-  const minute = now.getHours() * 60 + now.getMinutes();
-  return schedule.some((slot) => {
-    if (!slot.days.includes(day)) return false;
-    const from = timeToMinute(slot.from);
-    const to = timeToMinute(slot.to);
-    return from <= to ? minute >= from && minute <= to : minute >= from || minute <= to;
-  });
+  return scheduleSlotStart(schedule, now) !== null;
 }
 
 function timeToMinute(value: string): number {
