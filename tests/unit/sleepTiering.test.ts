@@ -120,14 +120,46 @@ describe('sleep tiering', () => {
     expect(sleep).toHaveBeenCalledWith(service.id);
   });
 
-  it('never escalates when deepAfterMinutes is unset', () => {
+  it('escalates after the default window when deepAfterMinutes is unset', () => {
     const context = createTestDb();
-    makeService(context, 'Doze Forever');
+    const service = makeService(context, 'Default Escalate');
+    const { views, sleep } = fakeViews({ dozing: true, dozeStartedAgoMs: 3 * 60 * 60_000 });
+
+    new SleepManager(context.db, views).tick();
+
+    expect(sleep).toHaveBeenCalledWith(service.id);
+  });
+
+  it('does not escalate before the default window when deepAfterMinutes is unset', () => {
+    const context = createTestDb();
+    makeService(context, 'Fresh Doze');
+    const { views, sleep, doze } = fakeViews({ dozing: true, dozeStartedAgoMs: 60 * 60_000 });
+
+    new SleepManager(context.db, views).tick();
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(doze).not.toHaveBeenCalled();
+  });
+
+  it('never escalates when deepAfterMinutes is explicitly null', () => {
+    const context = createTestDb();
+    makeService(context, 'Doze Forever', { sleep_policy: { deepAfterMinutes: null } });
     const { views, sleep, doze } = fakeViews({ dozing: true, dozeStartedAgoMs: 8 * 60 * 60_000 });
 
     new SleepManager(context.db, views).tick();
 
     expect(sleep).not.toHaveBeenCalled();
     expect(doze).not.toHaveBeenCalled();
+  });
+
+  it('dozes a "visible" pane when the main window is hidden to the tray', () => {
+    const context = createTestDb();
+    const service = makeService(context, 'Trayed');
+    const { views, sleep, doze } = fakeViews({ visible: true });
+
+    new SleepManager(context.db, views, () => true).tick();
+
+    expect(doze).toHaveBeenCalledWith(service.id);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });

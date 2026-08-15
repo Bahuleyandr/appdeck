@@ -5,6 +5,8 @@ export const VAULT_MAGIC = 'APPDECK1';
 export const VAULT_VERSION = 2;
 export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const DEFAULT_SLEEP_IDLE_MINUTES = 30;
+/** Escalate a dozing service to deep sleep after this long, unless the policy says otherwise. */
+export const DEFAULT_DOZE_DEEP_AFTER_MINUTES = 120;
 export const SERVICE_PARTITION_PREFIX = 'persist:svc-';
 
 /** Applied to custom recipes flagged mobile_mode (and no explicit UA override). */
