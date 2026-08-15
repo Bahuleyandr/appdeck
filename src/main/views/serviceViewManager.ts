@@ -322,6 +322,11 @@ export class ServiceViewManager {
     }
   }
 
+  /** Forget the focused instance so idle tracking can park it (e.g. window hidden or blurred). */
+  clearActive(): void {
+    this.activeInstanceId = null;
+  }
+
   isAudible(instanceId: string): boolean {
     return this.viewsForInstance(instanceId).some((managed) =>
       managed.view.webContents.isCurrentlyAudible()

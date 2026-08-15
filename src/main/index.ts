@@ -168,7 +168,7 @@ if (!gotLock) {
     );
     notificationPruneTimer.unref();
     badgeService.reconcile(listServiceInstances(db).map((service) => service.id));
-    sleepManager = new SleepManager(db, viewManager);
+    sleepManager = new SleepManager(db, viewManager, () => !(mainWindow?.isVisible() ?? false));
     sleepManager.start();
 
     const toggleWindow = (): void => {
@@ -229,6 +229,16 @@ if (!gotLock) {
 
     const wireWindow = (window: BrowserWindow): void => {
       window.on('focus', () => lockService?.bumpIdleTimer());
+      // Park every service view while the window sits in the tray so trim/doze can reclaim RAM;
+      // clearing the active instance lets idle tracking park the previously focused pane too.
+      window.on('hide', () => {
+        viewManager?.hideAll();
+        viewManager?.clearActive();
+      });
+      window.on('blur', () => viewManager?.clearActive());
+      // Ask the renderer to re-send bounds so parked views re-attach. If the renderer never
+      // responds, nothing breaks — views stay parked until the next natural bounds sync.
+      window.on('show', () => sendPush('event:views-resync-requested'));
       (
         window as BrowserWindow & {
           on(event: 'minimize', listener: (event: Electron.Event) => void): BrowserWindow;

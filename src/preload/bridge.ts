@@ -167,7 +167,8 @@ const allowedPushChannels = new Set<string>([
   'event:update-status',
   'event:settings-changed',
   'event:custom-code-pending',
-  'event:ai-run'
+  'event:ai-run',
+  'event:views-resync-requested'
 ]);
 
 const api = {

@@ -553,7 +553,8 @@ export const pushChannels = [
   'event:update-status',
   'event:settings-changed',
   'event:custom-code-pending',
-  'event:ai-run'
+  'event:ai-run',
+  'event:views-resync-requested'
 ] as const;
 
 export type PushChannel = (typeof pushChannels)[number];
