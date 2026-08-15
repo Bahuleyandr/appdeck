@@ -1,3 +1,4 @@
+import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   createServiceInstance,
@@ -7,9 +8,31 @@ import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import {
   exportEncryptedPeerVault,
   importEncryptedPeerVault,
-  PeerSyncRuntime
+  PeerSyncRuntime,
+  type PeerVaultEnvelope
 } from '../../src/main/services/peerSyncRuntime.js';
 import { createTestDb } from './helpers.js';
+
+// Encrypt an arbitrary payload with the peer envelope scheme, so tests can feed the importer
+// well-encrypted but structurally invalid plaintext.
+function makeEnvelope(payload: unknown, secret: string): PeerVaultEnvelope {
+  const salt = randomBytes(16);
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', scryptSync(secret, salt, 32), nonce);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(JSON.stringify(payload), 'utf8')),
+    cipher.final()
+  ]);
+  return {
+    version: 1,
+    kdf: 'scrypt',
+    salt: salt.toString('base64'),
+    nonce: nonce.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+    createdAt: Date.now()
+  };
+}
 
 describe('encrypted peer sync runtime', () => {
   it('exports and imports encrypted vault payloads between devices', () => {
@@ -34,6 +57,33 @@ describe('encrypted peer sync runtime', () => {
         (service) => service.display_name === 'GitHub'
       )
     ).toBe(true);
+  });
+
+  it('rejects peer payloads that fail vault schema validation', () => {
+    const { db } = createTestDb();
+
+    // Structurally incomplete record (used to pass the old shallow shape check).
+    const incomplete = { schemaVersion: 1, records: [{ type: 'workspace', id: 'w1' }] };
+    expect(() => importEncryptedPeerVault(db, makeEnvelope(incomplete, 'secret'), 'secret')).toThrow();
+
+    // Unknown record type.
+    const unknownType = {
+      schemaVersion: 1,
+      records: [
+        {
+          type: 'evil',
+          id: 'x',
+          rev: 1,
+          updatedAt: 1,
+          deletedAt: null,
+          originDevice: 'device',
+          data: {}
+        }
+      ]
+    };
+    expect(() =>
+      importEncryptedPeerVault(db, makeEnvelope(unknownType, 'secret'), 'secret')
+    ).toThrow();
   });
 
   it('requires the shared secret as a bearer token before serving the vault', async () => {

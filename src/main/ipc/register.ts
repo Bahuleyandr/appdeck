@@ -255,6 +255,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
         (candidate) => candidate.id === input.id
       );
       ctx.viewManager.sleep(input.id);
+      ctx.viewManager.forgetInstance(input.id);
       ctx.badgeService.clear(input.id);
       tombstoneServiceInstance(ctx.db, ctx.deviceId, input.id);
       deleteTabsForInstance(ctx.db, input.id);
@@ -690,14 +691,23 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'notify:incoming': (payload) => {
       const input = parseIpcPayload('notify:incoming', payload);
-      const record = insertNotification(ctx.db, input);
+      const { record, deduped } = insertNotification(ctx.db, input);
+      if (deduped) {
+        // A repeat within the dedup window: the user already saw the toast/badge/automation.
+        return;
+      }
       ctx.notificationService.show(input);
       ctx.automationRuntime.handleNotification(input);
       ctx.sendPush('event:notification', { record, unread: unreadNotificationCount(ctx.db) });
     },
     'unread:report': (payload) => {
       const input = parseIpcPayload('unread:report', payload);
-      ctx.badgeService.setCount(input.instanceId, input.count);
+      // Muted services stay out of the OS badge count; the in-app UI still gets the event.
+      if (getServiceInstance(ctx.db, input.instanceId)?.muted) {
+        ctx.badgeService.clear(input.instanceId);
+      } else {
+        ctx.badgeService.setCount(input.instanceId, input.count);
+      }
       ctx.automationRuntime.handleUnread(input);
       ctx.sendPush('event:unread', input);
     },

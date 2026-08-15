@@ -12,7 +12,7 @@ export const NOTIFICATION_DEDUP_MS = 30_000;
 export function insertNotification(
   db: Database.Database,
   input: { instanceId: string; title: string; body?: string; icon?: string }
-): NotificationRecord {
+): { record: NotificationRecord; deduped: boolean } {
   const now = Date.now();
   const body = input.body ?? '';
   const existing = db
@@ -25,7 +25,7 @@ export function insertNotification(
     | NotificationRecord
     | undefined;
   if (existing) {
-    return existing;
+    return { record: existing, deduped: true };
   }
   const info = db
     .prepare(
@@ -33,14 +33,17 @@ export function insertNotification(
     )
     .run(input.instanceId, input.title, body, input.icon ?? null, now);
   return {
-    id: Number(info.lastInsertRowid),
-    instance_id: input.instanceId,
-    title: input.title,
-    body,
-    icon: input.icon ?? null,
-    created_at: now,
-    read_at: null,
-    snoozed_until: null
+    record: {
+      id: Number(info.lastInsertRowid),
+      instance_id: input.instanceId,
+      title: input.title,
+      body,
+      icon: input.icon ?? null,
+      created_at: now,
+      read_at: null,
+      snoozed_until: null
+    },
+    deduped: false
   };
 }
 

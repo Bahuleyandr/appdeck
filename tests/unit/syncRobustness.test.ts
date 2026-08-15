@@ -169,11 +169,7 @@ describe('sync applied notifications', () => {
     service.scheduleSync();
     vi.advanceTimersByTime(2500);
     vi.useRealTimers();
-    await vi.waitFor(() => {
-      expect(onApplied).toHaveBeenCalledWith(
-        expect.objectContaining({ applied: expect.any(Number) })
-      );
-    });
+    await vi.waitFor(() => expect(onApplied).toHaveBeenCalled());
     const result = onApplied.mock.calls[0]?.[0] as { applied: number };
     expect(result.applied).toBeGreaterThan(0);
     service.dispose();

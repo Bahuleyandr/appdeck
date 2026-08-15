@@ -6,6 +6,7 @@ interface FakeWebContents {
   executeJavaScript: ReturnType<typeof vi.fn>;
   insertCSS: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  reload: ReturnType<typeof vi.fn>;
   setAudioMuted: ReturnType<typeof vi.fn>;
   setBackgroundThrottling: ReturnType<typeof vi.fn>;
 }
@@ -240,7 +241,7 @@ describe('service view guards', () => {
   });
 
   it('estimates memory saved by sleeping from the last known usage', () => {
-    const { service, viewId, manager } = setup({ locked: () => false });
+    const { context, service, viewId, manager } = setup({ locked: () => false });
     manager.setBounds([{ viewId, rect: RECT }], [viewId]);
 
     manager.recordMemory(service.id, 320);
@@ -249,6 +250,59 @@ describe('service view guards', () => {
 
     manager.sleep(service.id);
     expect(manager.estimatedSavedMB()).toBe(320);
+
+    // Disabled (and deleted) services don't count as savings — they simply don't run.
+    updateServiceInstance(context.db, context.deviceId, service.id, { disabled: true });
+    expect(manager.estimatedSavedMB()).toBe(0);
+
+    updateServiceInstance(context.db, context.deviceId, service.id, { disabled: false });
+    expect(manager.estimatedSavedMB()).toBe(320);
+    manager.forgetInstance(service.id);
+    expect(manager.estimatedSavedMB()).toBe(0);
+  });
+
+  it('auto-reloads an attached pane after a transient crash', () => {
+    vi.useFakeTimers();
+    try {
+      const { service, viewId, manager, sendPush } = setup({ locked: () => false });
+      manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+      const view = electronMock.state.createdViews[0];
+      if (!view) throw new Error('Expected a created view');
+      const crash = view.webContents.handlers.get('render-process-gone');
+      if (!crash) throw new Error('Expected render-process-gone handler');
+
+      sendPush.mockClear();
+      crash(undefined, { reason: 'crashed' });
+      expect(sendPush).toHaveBeenCalledWith('event:service-state', {
+        instanceId: service.id,
+        state: 'loading'
+      });
+      vi.advanceTimersByTime(1100);
+      expect(view.webContents.reload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('parks a crashed detached pane instead of reloading it off-screen', () => {
+    const { service, viewId, manager, sendPush } = setup({ locked: () => false });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const view = electronMock.state.createdViews[0];
+    if (!view) throw new Error('Expected a created view');
+    const crash = view.webContents.handlers.get('render-process-gone');
+    if (!crash) throw new Error('Expected render-process-gone handler');
+
+    // Detach it (hidden pane), then crash.
+    manager.setBounds([], []);
+    sendPush.mockClear();
+    crash(undefined, { reason: 'oom' });
+
+    expect(view.webContents.reload).not.toHaveBeenCalled();
+    expect(view.webContents.close).toHaveBeenCalled();
+    expect(sendPush).toHaveBeenCalledWith('event:service-state', {
+      instanceId: service.id,
+      state: 'sleeping'
+    });
   });
 
   it('enforces firewall rules and tracker blocking from one merged onBeforeRequest handler', () => {

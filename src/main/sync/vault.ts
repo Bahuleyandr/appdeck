@@ -13,7 +13,7 @@ import { listWorkspaceServices } from '../db/repositories/workspaceServices.js';
 import { listWorkspaces } from '../db/repositories/workspaces.js';
 import { decryptWithRootKey, encryptWithRootKey } from './crypto.js';
 
-const vaultPlaintextSchema = z.object({
+export const vaultPlaintextSchema = z.object({
   schemaVersion: z.number().int().positive(),
   records: z.array(
     z.object({

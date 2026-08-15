@@ -17,6 +17,7 @@ describe('notifications repo', () => {
       title: 'Hello there',
       body: 'first message'
     });
+    expect(a.deduped).toBe(false);
     insertNotification(db, { instanceId: 'svc-2', title: 'Standup', body: 'meeting at 10' });
 
     expect(listNotifications(db)).toHaveLength(2);
@@ -25,7 +26,7 @@ describe('notifications repo', () => {
     expect(searchNotifications(db, 'standup').map((n) => n.title)).toEqual(['Standup']);
     expect(searchNotifications(db, 'message')).toHaveLength(1);
 
-    markNotificationRead(db, a.id);
+    markNotificationRead(db, a.record.id);
     expect(unreadNotificationCount(db)).toBe(1);
 
     markAllNotificationsRead(db);
@@ -46,7 +47,9 @@ describe('notifications repo', () => {
       body: 'AppDeck is ready'
     });
 
-    expect(second.id).toBe(first.id);
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(true);
+    expect(second.record.id).toBe(first.record.id);
     expect(listNotifications(db)).toHaveLength(1);
     expect(unreadNotificationCount(db)).toBe(1);
   });
