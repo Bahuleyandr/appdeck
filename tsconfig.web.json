@@ -10,6 +10,11 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
-    "tests/unit/**/*.test.tsx"
+    "tests/unit/**/*.test.tsx",
+    // Renderer-test support files: the jest-dom matcher augmentation, the typed preload-bridge
+    // double, and shared fixtures (composite projects must list every file in the program).
+    "tests/unit/setup.renderer.ts",
+    "tests/unit/rendererBridge.ts",
+    "tests/unit/rendererFixtures.ts"
   ]
 }

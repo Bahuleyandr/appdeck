@@ -78,6 +78,18 @@ describe('CommandPalette keyboard and a11y', () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 
+  it('activates the highlighted item with Enter and closes the palette', async () => {
+    const selectService = vi.fn(async () => undefined);
+    useAppStore.setState({ selectService });
+    const input = await renderPalette();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(selectService).toHaveBeenCalledWith('svc-1'));
+    expect(useAppStore.getState().commandOpen).toBe(false);
+  });
+
   it('closes on Escape even when focus has moved off the input', async () => {
     await renderPalette();
     const option = screen.getAllByRole('option')[0];
