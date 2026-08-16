@@ -14,6 +14,8 @@ import { mergeVaultPlaintext } from './merge.js';
 import { decryptVault, encryptVault, localVaultHash, vaultContentHash } from './vault.js';
 
 const CLOUD_DEBOUNCE_MS = 2000;
+/** Sign-out waits this long for server-side revocation before completing locally regardless. */
+const LOGOUT_TIMEOUT_MS = 3000;
 
 interface AuthParams {
   authSalt: string;
@@ -93,16 +95,23 @@ export class CloudSyncService {
     await this.syncNow();
   }
 
-  logout(): void {
-    // Best-effort server-side revocation of the current session token (fire-and-forget: local
-    // sign-out must succeed even when offline or against an older server).
+  async logout(): Promise<void> {
+    // Revoke the session server-side before dropping the local copy of the token — once it is
+    // gone we can never retry, so a fire-and-forget request would silently leave the token live
+    // for its full 30-day TTL whenever the app quits right after sign-out. Bounded so that being
+    // offline (or on an older server) still signs you out promptly.
     const url = getMeta(this.db, 'cloud_url');
     const token = this.requireToken();
     if (url && token) {
-      void fetch(`${url}/api/logout`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` }
-      }).catch(() => undefined);
+      try {
+        await fetch(`${url}/api/logout`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(LOGOUT_TIMEOUT_MS)
+        });
+      } catch {
+        // Offline or unreachable: sign out locally anyway. The token still expires on its own.
+      }
     }
     this.rootKey = null;
     this.token = null;

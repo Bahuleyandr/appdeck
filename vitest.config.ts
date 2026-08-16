@@ -24,6 +24,11 @@ export default defineConfig({
         test: {
           name: 'renderer',
           environment: 'jsdom',
+          // Pin the document origin: jsdom only exposes localStorage/sessionStorage for a
+          // non-opaque origin, and leaving it to the default made `localStorage` undefined in
+          // some shells (reproducibly under PowerShell, fine under git-bash) — which failed
+          // every test that touches persisted UI state.
+          environmentOptions: { jsdom: { url: 'http://localhost/' } },
           include: ['tests/unit/**/*.test.tsx'],
           setupFiles: ['tests/unit/setup.renderer.ts']
         }

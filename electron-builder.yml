@@ -55,7 +55,6 @@ mac:
   # unsigned builds: when no Developer ID identity is available electron-builder skips
   # signing entirely (and notarization with it), so local/CI builds without certs work.
   hardenedRuntime: true
-  gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   # electron-builder 26 notarizes only after a successful signing pass AND only when Apple

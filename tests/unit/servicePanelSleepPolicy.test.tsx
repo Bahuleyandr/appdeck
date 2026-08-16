@@ -66,13 +66,14 @@ describe('ServicePanel sleep-policy tri-state controls', () => {
   });
 
   it('saves default as undefined, never as null, and merges on top of the stored policy', () => {
-    // The stored policy may carry fields this form does not manage (added by a newer version,
-    // synced from another device); a save must not strip them.
+    // The form edits two of the policy's fields, so it must merge onto the stored object rather
+    // than replace it — otherwise editing the idle setting would silently drop `mode`.
+    // (Scope note: this is a component-level guarantee. `sleepPolicySchema` is a plain zod
+    // object, so keys outside the schema are stripped at the IPC boundary regardless.)
     const storedPolicy = {
       idleMinutes: 30,
-      mode: 'auto',
-      deepAfterMinutes: null,
-      futureField: 'preserve-me'
+      mode: 'doze',
+      deepAfterMinutes: null
     } as SleepPolicy;
     const { updateService } = renderPanel(makeService({ sleep_policy: storedPolicy }));
 
@@ -82,7 +83,8 @@ describe('ServicePanel sleep-policy tri-state controls', () => {
     const saved = savedPolicy(updateService);
     expect(saved.idleMinutes).toBeNull();
     expect(saved.deepAfterMinutes).toBeUndefined();
-    expect((saved as Record<string, unknown>).futureField).toBe('preserve-me');
+    // The field the form does not edit survives the save.
+    expect(saved.mode).toBe('doze');
   });
 
   it('saves a custom threshold as the typed number and falls back to default when unparsable', () => {

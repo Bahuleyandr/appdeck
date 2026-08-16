@@ -105,7 +105,7 @@ export function Onboarding(): JSX.Element | null {
                 ))}
               </div>
               <textarea
-                className="mt-3 h-32 w-full resize-none rounded-md border border-line bg-shell p-3 text-xs outline-none focus:border-accent"
+                className="mt-3 h-32 w-full resize-none rounded-md border border-line bg-shell p-3 text-xs outline-hidden focus:border-accent"
                 aria-label={`Paste your ${source} export here`}
                 placeholder={`Paste your ${source} export here`}
                 value={migrationData}

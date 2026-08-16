@@ -368,6 +368,19 @@ describe('service view guards', () => {
 
     // Disabled tracker blocking passes tracker URLs through.
     expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
+
+    // An explicit allow rule is the user overriding the blocklist for one service, so it must
+    // beat EasyList too — otherwise there is no way to un-break a service the lists catch.
+    blocker.setEnabled(true);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
+    const allowRule = upsertFirewallRule(context.db, {
+      rule_type: 'domain',
+      pattern: 'google-analytics.com',
+      action: 'allow'
+    });
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
+    deleteFirewallRule(context.db, allowRule.id);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
   });
 
   it('reports instance visibility from the last bounds sync', () => {

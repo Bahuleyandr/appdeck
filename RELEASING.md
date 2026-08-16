@@ -64,11 +64,15 @@ Notes:
   differ you can use `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` for Windows and keep `CSC_LINK` for
   macOS (electron-builder prefers the `WIN_`-prefixed pair on Windows) — add them to the
   workflow's env block in that case.
-- Set **all three** Apple secrets or none: electron-builder 26 skips notarization cleanly when
-  none are present, but fails the build when they are only partially set (by design, so a typo
-  can't silently ship an un-notarized release).
-- The "Report signing status" step in `.github/workflows/release.yml` writes whether artifacts
-  were signed/notarized into each run's job summary.
+- Set **all three** Apple secrets or none. electron-builder 26 skips notarization cleanly when
+  none are present, and raises on a partially-set trio — but only once a signing identity
+  exists: without `CSC_LINK` macOS signing returns early and never reaches the notarization
+  step, so a typo'd `APPLE_*` secret produces a **silently unsigned, green** build. Until certs
+  are added, treat the job summary below as the source of truth rather than a passing run.
+- The "Report signing status" step in `.github/workflows/release.yml` writes whether signing
+  secrets were present into each run's job summary. It reports secret presence, not proof that
+  the artifacts were signed — verify with the `codesign`/`signtool` commands above before
+  publishing a release that is meant to be signed.
 
 ### Verifying a signed release
 

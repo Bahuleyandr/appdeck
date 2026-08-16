@@ -1,8 +1,9 @@
 name: Release
 
-# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build signed installers
-# for Windows, macOS, and Linux and upload them to a GitHub Release. The release is created as a
-# DRAFT (see electron-builder.yml publish.releaseType) so you review and publish it manually.
+# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build installers for
+# Windows, macOS, and Linux and upload them to a GitHub Release. Builds are signed only once
+# the signing secrets exist (see RELEASING.md); until then they are unsigned. The release is
+# created as a DRAFT (see electron-builder.yml publish.releaseType) for manual review.
 on:
   push:
     tags:

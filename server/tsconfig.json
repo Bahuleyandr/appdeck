@@ -4,10 +4,14 @@
     "module": "ES2022",
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
-    "types": ["@cloudflare/workers-types"],
+    // vitest-pool-workers types provide the `cloudflare:test` module the suite imports; without
+    // it the ProvidedEnv augmentation in test/env.d.ts would declare a new module instead.
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  // vitest.config.mts is deliberately excluded: it is Node-side config, and pulling it into a
+  // workers-types program clashes on the DOM/Node URL types.
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

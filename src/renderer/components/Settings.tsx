@@ -34,9 +34,15 @@ export function Settings(): JSX.Element | null {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<AppMetrics | null>(null);
   const [updateStatus, setUpdateStatus] = useState('');
-  const [account, setAccount] = useState<{ configured: boolean; email?: string }>({
+  const [account, setAccount] = useState<{
+    configured: boolean;
+    email?: string;
+    lastError?: string;
+  }>({
     configured: false
   });
+  /** Forces the sign-in form open for an account whose session the server no longer accepts. */
+  const [reauth, setReauth] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [accEmail, setAccEmail] = useState('');
   const [accPassword, setAccPassword] = useState('');
@@ -86,6 +92,7 @@ export function Settings(): JSX.Element | null {
       setAccMsg(ok);
       setAccount(await api.account.status());
       setAccPassword('');
+      setReauth(false);
     } catch (error) {
       setAccMsg(error instanceof Error ? error.message : String(error));
     }
@@ -402,7 +409,21 @@ export function Settings(): JSX.Element | null {
                 ? `Signed in as ${account.email ?? ''}`
                 : 'Sign in to sync across devices via a server (end-to-end encrypted).'}
             </div>
-            {account.configured ? (
+            {account.lastError ? (
+              <div className="mb-2 rounded-md border border-line p-2 text-xs" role="status">
+                Last sync failed: {account.lastError}
+                {/* A rejected session (e.g. after a server upgrade) leaves the account still
+                    "configured", so without this the only way back in is to log out first. */}
+                <button
+                  className="app-button mt-2 block"
+                  onClick={() => setReauth(true)}
+                  disabled={reauth}
+                >
+                  Sign in again
+                </button>
+              </div>
+            ) : null}
+            {account.configured && !reauth ? (
               <div className="flex gap-2">
                 <button
                   className="app-button"

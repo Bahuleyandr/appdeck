@@ -187,6 +187,45 @@ function positiveInt(value: string | undefined, fallback: number): number {
 }
 
 /** Returns a 429 response when the caller is over budget for `route`, else null. */
+/**
+ * Caller identity for metering, or null when there is none to meter. IPv6 is bucketed by /64:
+ * a residential client is handed a whole /64 and SLAAC privacy addressing rotates the /128 at
+ * will, so keying the full address would meter nothing while minting a fresh D1 row per attempt.
+ */
+export function rateLimitBucket(request: Request): string | null {
+  const raw = request.headers.get('cf-connecting-ip')?.trim();
+  if (!raw) {
+    return null;
+  }
+  const ip = raw.slice(0, 64);
+  if (!ip.includes(':')) {
+    return ip;
+  }
+  const groups = ip.split(':');
+  // Only collapse a well-formed address; anything unusual is metered verbatim (already capped).
+  if (groups.length < 4 || ip.includes('::')) {
+    const expanded = expandIpv6(ip);
+    return expanded ? `${expanded}/64` : ip;
+  }
+  return `${groups.slice(0, 4).join(':')}/64`;
+}
+
+/** Returns the first four hextets of an abbreviated IPv6 address, or null if unparsable. */
+function expandIpv6(ip: string): string | null {
+  const [head = '', tail = '', extra] = ip.split('::');
+  if (extra !== undefined) {
+    return null;
+  }
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const missing = 8 - headGroups.length - tailGroups.length;
+  if (missing < 0) {
+    return null;
+  }
+  const full = [...headGroups, ...Array<string>(missing).fill('0'), ...tailGroups];
+  return full.slice(0, 4).join(':');
+}
+
 async function enforceRateLimit(
   request: Request,
   env: Env,
@@ -194,21 +233,39 @@ async function enforceRateLimit(
   max: number
 ): Promise<Response | null> {
   const { windowMs } = rateLimits(env);
-  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const bucket = rateLimitBucket(request);
+  if (bucket === null) {
+    // No CF-Connecting-IP: wrangler dev, a service binding, or any ingress that is not the CF
+    // edge. There is no caller identity to meter, and lumping them all under one key would let
+    // a single client 429 everybody. Skip rather than invent a shared bucket.
+    console.warn(`Rate limit skipped for ${route}: no client IP on the request`);
+    return null;
+  }
   const now = Date.now();
-  // Cheap cleanup on write: anything older than two windows can never be consulted again.
-  await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
-    .bind(now - 2 * windowMs)
-    .run();
-  const row = (await env.DB.prepare(
-    'INSERT INTO rate_limits (rl_key, window_start, count) VALUES (?, ?, 1) ' +
-      'ON CONFLICT(rl_key) DO UPDATE SET ' +
-      'count = CASE WHEN rate_limits.window_start <= ? THEN 1 ELSE rate_limits.count + 1 END, ' +
-      'window_start = CASE WHEN rate_limits.window_start <= ? THEN excluded.window_start ELSE rate_limits.window_start END ' +
-      'RETURNING window_start, count'
-  )
-    .bind(`${route}:${ip}`, now, now - windowMs, now - windowMs)
-    .first()) as { window_start: number; count: number };
+  let row: { window_start: number; count: number } | null = null;
+  try {
+    // Cheap cleanup on write: anything older than two windows can never be consulted again.
+    await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
+      .bind(now - 2 * windowMs)
+      .run();
+    row = (await env.DB.prepare(
+      'INSERT INTO rate_limits (rl_key, window_start, count) VALUES (?, ?, 1) ' +
+        'ON CONFLICT(rl_key) DO UPDATE SET ' +
+        'count = CASE WHEN rate_limits.window_start <= ? THEN 1 ELSE rate_limits.count + 1 END, ' +
+        'window_start = CASE WHEN rate_limits.window_start <= ? THEN excluded.window_start ELSE rate_limits.window_start END ' +
+        'RETURNING window_start, count'
+    )
+      .bind(`${route}:${bucket}`, now, now - windowMs, now - windowMs)
+      .first()) as { window_start: number; count: number } | null;
+  } catch (error) {
+    // Fail open: a limiter outage must not become an auth outage. The routes behind it need D1
+    // anyway, so this grants no access a healthy limiter would have denied.
+    console.error('Rate limit check failed; allowing request', error);
+    return null;
+  }
+  if (!row) {
+    return null;
+  }
   if (row.count > max) {
     const retryAfterSeconds = Math.max(1, Math.ceil((row.window_start + windowMs - now) / 1000));
     return json({ error: 'rate_limited', retryAfter: retryAfterSeconds }, 429, {

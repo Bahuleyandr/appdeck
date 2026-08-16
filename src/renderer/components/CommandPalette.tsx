@@ -126,7 +126,7 @@ export function CommandPalette(): JSX.Element | null {
         <div className="flex h-12 items-center gap-2 border-b border-line px-3">
           <Search size={16} aria-hidden="true" className="text-muted" />
           <input
-            className="h-full flex-1 bg-transparent text-sm outline-none"
+            className="h-full flex-1 bg-transparent text-sm outline-hidden"
             autoFocus
             role="combobox"
             aria-expanded

@@ -1,9 +1,15 @@
 import type { D1Migration } from '@cloudflare/vitest-pool-workers';
-import type { Env } from '../src/index';
+import type { Env as WorkerEnv } from '../src/index';
 
-declare module 'cloudflare:test' {
-  // Bindings the vitest config provisions for the test runtime.
-  interface ProvidedEnv extends Env {
-    TEST_MIGRATIONS: D1Migration[];
+// vitest-pool-workers types the `env` export as the global `Cloudflare.Env`, so the test
+// bindings have to be declared there. Augmenting `ProvidedEnv` (the older pattern) compiles
+// but binds to nothing, leaving `env` as an empty object type.
+declare global {
+  namespace Cloudflare {
+    interface Env extends WorkerEnv {
+      TEST_MIGRATIONS: D1Migration[];
+    }
   }
 }
+
+export {};

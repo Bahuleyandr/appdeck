@@ -811,8 +811,8 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       await ctx.cloudSyncService.login(input.serverUrl, input.email, input.password);
       ctx.sendDataChanged();
     },
-    'account:logout': () => {
-      ctx.cloudSyncService.logout();
+    'account:logout': async () => {
+      await ctx.cloudSyncService.logout();
       ctx.sendDataChanged();
     },
     'account:syncNow': async () => {

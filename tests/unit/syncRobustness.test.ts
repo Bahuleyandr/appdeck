@@ -123,21 +123,21 @@ describe('cloud sync robustness', () => {
       return Promise.reject(new Error('offline'));
     });
 
-    service.logout();
+    // Revocation is awaited (bounded) so the token cannot outlive a sign-out-then-quit, but an
+    // unreachable server must still sign the user out locally.
+    await service.logout();
     expect(calls).toEqual([
       { url: 'https://sync.test/api/logout', method: 'POST', auth: 'Bearer token-1' }
     ]);
     expect(getMeta(context.db, 'cloud_token_safe')).toBe('');
     expect(service.status().configured).toBe(false);
-    // Let the fire-and-forget rejection settle inside its catch handler.
-    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   it('logout without a configured session does not call the server', async () => {
     const context = createTestDb();
     const service = new CloudSyncService(context.db);
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch')));
-    service.logout();
+    await service.logout();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 

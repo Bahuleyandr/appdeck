@@ -350,6 +350,63 @@ describe('rate limiting', () => {
     expect(limited.status).toBe(429);
   });
 
+  it('does not put header-less callers into one shared bucket', async () => {
+    // wrangler dev, a service binding, or any ingress that is not the CF edge sends no
+    // CF-Connecting-IP. Collapsing those into a single key would let one caller 429 everyone.
+    const strict: Env = { ...env, RATE_LIMIT_AUTH_MAX: '2' };
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const res = await worker.fetch(
+        new Request(`${BASE}/api/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: freshEmail(), authHash: 'nope' })
+        }),
+        strict
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses).not.toContain(429);
+  });
+
+  it('buckets IPv6 clients by /64 so address rotation cannot bypass the limit', async () => {
+    const strict: Env = { ...env, RATE_LIMIT_AUTH_MAX: '2' };
+    // Same /64, different /128 each time — SLAAC privacy addressing rotates these freely.
+    const statuses: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const res = await post(
+        '/api/login',
+        { email: freshEmail(), authHash: 'nope' },
+        { env: strict, ip: `2001:db8:abcd:1234::${(i + 1).toString(16)}` }
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses).toContain(429);
+
+    // A genuinely different /64 is still its own bucket.
+    const other = await post(
+      '/api/login',
+      { email: freshEmail(), authHash: 'nope' },
+      { env: strict, ip: '2001:db8:abcd:9999::1' }
+    );
+    expect(other.status).toBe(401);
+  });
+
+  it('keeps auth working when the rate-limit table is unavailable', async () => {
+    // A limiter outage must not become an auth outage: the limiter fails open and logs.
+    const broken: Env = {
+      ...env,
+      DB: {
+        prepare: (sql: string) => {
+          if (sql.includes('rate_limits')) throw new Error('D1 unavailable');
+          return env.DB.prepare(sql);
+        }
+      } as Env['DB']
+    };
+    const res = await post('/api/login', { email: freshEmail(), authHash: 'nope' }, { env: broken });
+    expect(res.status).toBe(401);
+  });
+
   it('opens a fresh window once the previous one expires', async () => {
     const ip = freshIp();
     const shortEnv: Env = { ...env, RATE_LIMIT_AUTH_MAX: '1', RATE_LIMIT_WINDOW_SECONDS: '1' };
