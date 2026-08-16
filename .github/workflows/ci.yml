@@ -43,7 +43,7 @@ jobs:
       # Playwright against the Electron binary (no browser download needed). Electron
       # needs a display on Linux, hence xvfb-run.
       - run: xvfb-run --auto-servernum -- npm run test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-traces
