@@ -6,7 +6,7 @@
   "author": "AppDeck",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "private": true,
   "type": "module",
@@ -48,7 +48,7 @@
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "5.2.0",
     "autoprefixer": "10.5.4",
-    "electron": "42.9.0",
+    "electron": "42.9.1",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "eslint": "10.8.1",
