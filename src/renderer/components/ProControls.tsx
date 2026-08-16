@@ -38,11 +38,16 @@ import type {
   ServiceCategory,
   ServiceInstance,
   ServiceProxy,
+  SleepPolicy,
   TrustStatus,
   WorkKit,
   Workspace,
   WorkspaceSnapshot
 } from '../../shared/types';
+import {
+  DEFAULT_DOZE_DEEP_AFTER_MINUTES,
+  DEFAULT_SLEEP_IDLE_MINUTES
+} from '../../shared/constants';
 import { api } from '../ipc/client';
 import { useAppStore, type ProControlsPanel } from '../state/appStore';
 
@@ -468,6 +473,9 @@ function WorkspacePanel({
   const [scheduleTo, setScheduleTo] = useState(
     activeWorkspace?.focus_rules.schedule?.[0]?.to ?? ''
   );
+  const [idleChoice, setIdleChoice] = useState<SleepTimingChoice>(
+    sleepTimingChoice(activeWorkspace?.sleep_defaults.idleMinutes)
+  );
   const [idleMinutes, setIdleMinutes] = useState(
     String(activeWorkspace?.sleep_defaults.idleMinutes ?? '')
   );
@@ -480,8 +488,11 @@ function WorkspacePanel({
     setDnd(activeWorkspace?.focus_rules.dnd ?? false);
     setScheduleFrom(activeWorkspace?.focus_rules.schedule?.[0]?.from ?? '');
     setScheduleTo(activeWorkspace?.focus_rules.schedule?.[0]?.to ?? '');
+    setIdleChoice(sleepTimingChoice(activeWorkspace?.sleep_defaults.idleMinutes));
     setIdleMinutes(String(activeWorkspace?.sleep_defaults.idleMinutes ?? ''));
-  }, [activeWorkspace]);
+    // Key the reset on identity + server-side edit time, not object identity: every data-changed
+    // reload creates fresh objects and used to wipe the user's in-progress edits.
+  }, [activeWorkspace?.id, activeWorkspace?.updated_at]);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr]">
@@ -576,10 +587,23 @@ function WorkspacePanel({
                 />
                 Disabled
               </label>
+              <select
+                className="field"
+                title="Default sleep-after-idle for services in this workspace"
+                value={idleChoice}
+                onChange={(event) => setIdleChoice(event.target.value as SleepTimingChoice)}
+              >
+                <option value="default">
+                  Sleep after idle: default ({DEFAULT_SLEEP_IDLE_MINUTES} min)
+                </option>
+                <option value="never">Sleep after idle: never</option>
+                <option value="custom">Sleep after idle: custom</option>
+              </select>
               <input
                 className="field"
                 value={idleMinutes}
-                placeholder="Sleep idle minutes"
+                placeholder="Idle minutes"
+                disabled={idleChoice !== 'custom'}
                 onChange={(event) => setIdleMinutes(event.target.value)}
               />
               <input
@@ -619,7 +643,12 @@ function WorkspacePanel({
                             ]
                           : undefined
                     },
-                    sleep_defaults: { idleMinutes: numberOrNull(idleMinutes) }
+                    // Merge on top of the stored defaults so fields this form doesn't manage
+                    // survive the save.
+                    sleep_defaults: {
+                      ...activeWorkspace.sleep_defaults,
+                      idleMinutes: sleepMinutesFrom(idleChoice, idleMinutes)
+                    }
                   })
                 }
               >
@@ -779,7 +808,9 @@ function EditableProfile({
     setLabel(profile.label);
     setColor(profile.color ?? DEFAULT_PROFILE_COLOR);
     setNote(profile.note ?? '');
-  }, [profile]);
+    // Key the reset on identity + server-side edit time, not object identity: every data-changed
+    // reload creates fresh objects and used to wipe the user's in-progress edits.
+  }, [profile.id, profile.updated_at]);
 
   return (
     <div className="rounded-md border border-line p-2">
@@ -841,7 +872,19 @@ function ServicePanel({
   const [pinned, setPinned] = useState(service?.pinned ?? false);
   const [disabled, setDisabled] = useState(service?.disabled ?? false);
   const [iconPath, setIconPath] = useState(service?.icon_path ?? '');
+  const [idleChoice, setIdleChoice] = useState<SleepTimingChoice>(
+    sleepTimingChoice(service?.sleep_policy.idleMinutes)
+  );
   const [idleMinutes, setIdleMinutes] = useState(String(service?.sleep_policy.idleMinutes ?? ''));
+  const [sleepMode, setSleepMode] = useState<NonNullable<SleepPolicy['mode']>>(
+    service?.sleep_policy.mode ?? 'auto'
+  );
+  const [deepAfterChoice, setDeepAfterChoice] = useState<SleepTimingChoice>(
+    sleepTimingChoice(service?.sleep_policy.deepAfterMinutes)
+  );
+  const [deepAfterMinutes, setDeepAfterMinutes] = useState(
+    String(service?.sleep_policy.deepAfterMinutes ?? '')
+  );
   const [zoomFactor, setZoomFactor] = useState(String(service?.zoom_factor ?? 1));
   const [spellcheck, setSpellcheck] = useState(service?.spellcheck ?? true);
   const [userAgent, setUserAgent] = useState(service?.user_agent ?? '');
@@ -862,12 +905,18 @@ function ServicePanel({
       setCodePending(false);
       return;
     }
+    const serviceId = service.id;
     void api.services
       .pendingCustomCode()
-      .then((pending) =>
-        setCodePending(pending.some((entry) => entry.instanceId === service.id))
-      );
-  }, [service]);
+      .then((pending) => setCodePending(pending.some((entry) => entry.instanceId === serviceId)));
+    // Live update: main pushes this when synced/imported custom code starts needing approval.
+    return api.on('event:custom-code-pending', (payload) => {
+      const event = payload as { instanceId: string };
+      if (event.instanceId === serviceId) setCodePending(true);
+    });
+    // Keyed on the id: data-changed reloads mint new objects for the same service and must not
+    // re-run this (or wipe in-progress edits below).
+  }, [service?.id]);
 
   useEffect(() => {
     setDisplayName(service?.display_name ?? '');
@@ -877,7 +926,11 @@ function ServicePanel({
     setPinned(service?.pinned ?? false);
     setDisabled(service?.disabled ?? false);
     setIconPath(service?.icon_path ?? '');
+    setIdleChoice(sleepTimingChoice(service?.sleep_policy.idleMinutes));
     setIdleMinutes(String(service?.sleep_policy.idleMinutes ?? ''));
+    setSleepMode(service?.sleep_policy.mode ?? 'auto');
+    setDeepAfterChoice(sleepTimingChoice(service?.sleep_policy.deepAfterMinutes));
+    setDeepAfterMinutes(String(service?.sleep_policy.deepAfterMinutes ?? ''));
     setZoomFactor(String(service?.zoom_factor ?? 1));
     setSpellcheck(service?.spellcheck ?? true);
     setUserAgent(service?.user_agent ?? '');
@@ -888,7 +941,9 @@ function ServicePanel({
     setProxyPort(String(service?.proxy?.port ?? ''));
     setProxyBypass(service?.proxy?.bypassRules ?? '');
     setCurrentUrl(null);
-  }, [service]);
+    // Key the reset on identity + server-side edit time, not object identity: every data-changed
+    // reload creates fresh objects and used to wipe the user's in-progress edits.
+  }, [service?.id, service?.updated_at]);
 
   if (!service) return <EmptyState label="Select a service first." />;
 
@@ -901,7 +956,13 @@ function ServicePanel({
       muted,
       pinned,
       disabled,
-      sleep_policy: { idleMinutes: numberOrNull(idleMinutes) },
+      // Merge on top of the stored policy so fields this form doesn't manage survive the save.
+      sleep_policy: {
+        ...service.sleep_policy,
+        idleMinutes: sleepMinutesFrom(idleChoice, idleMinutes),
+        mode: sleepMode,
+        deepAfterMinutes: sleepMinutesFrom(deepAfterChoice, deepAfterMinutes)
+      },
       proxy: proxyFromFields(proxyMode, proxyHost, proxyPort, proxyBypass),
       user_agent: userAgent.trim() || null,
       zoom_factor: numberOrDefault(zoomFactor, 1),
@@ -974,12 +1035,60 @@ function ServicePanel({
               Spellcheck
             </label>
           </div>
-          <input
+          <div className="grid grid-cols-[1fr_110px] gap-2">
+            <select
+              className="field"
+              title="When an idle service goes to sleep"
+              value={idleChoice}
+              onChange={(event) => setIdleChoice(event.target.value as SleepTimingChoice)}
+            >
+              <option value="default">
+                Sleep after idle: default ({DEFAULT_SLEEP_IDLE_MINUTES} min)
+              </option>
+              <option value="never">Sleep after idle: never</option>
+              <option value="custom">Sleep after idle: custom</option>
+            </select>
+            <input
+              className="field"
+              value={idleMinutes}
+              placeholder="Minutes"
+              disabled={idleChoice !== 'custom'}
+              onChange={(event) => setIdleMinutes(event.target.value)}
+            />
+          </div>
+          <select
             className="field w-full"
-            value={idleMinutes}
-            placeholder="Sleep idle minutes"
-            onChange={(event) => setIdleMinutes(event.target.value)}
-          />
+            title="How a sleeping service is parked"
+            value={sleepMode}
+            onChange={(event) =>
+              setSleepMode(event.target.value as NonNullable<SleepPolicy['mode']>)
+            }
+          >
+            <option value="auto">Sleep style: auto (doze, then deep)</option>
+            <option value="doze">Sleep style: doze (keeps notifications)</option>
+            <option value="deep">Sleep style: deep (frees memory)</option>
+          </select>
+          <div className="grid grid-cols-[1fr_110px] gap-2">
+            <select
+              className="field"
+              title="When a dozing service escalates to deep sleep"
+              value={deepAfterChoice}
+              onChange={(event) => setDeepAfterChoice(event.target.value as SleepTimingChoice)}
+            >
+              <option value="default">
+                Deep sleep after: default ({DEFAULT_DOZE_DEEP_AFTER_MINUTES} min)
+              </option>
+              <option value="never">Deep sleep after: never</option>
+              <option value="custom">Deep sleep after: custom</option>
+            </select>
+            <input
+              className="field"
+              value={deepAfterMinutes}
+              placeholder="Minutes"
+              disabled={deepAfterChoice !== 'custom'}
+              onChange={(event) => setDeepAfterMinutes(event.target.value)}
+            />
+          </div>
           <input
             className="field w-full"
             value={zoomFactor}
@@ -1353,7 +1462,17 @@ function CatalogPanel({
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.registry.search(q, 80).then(setResults);
+    // Debounce + cancel so a slow older query can never overwrite a newer result set.
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void api.registry.search(q, 80).then((entries) => {
+        if (!cancelled) setResults(entries);
+      });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [q]);
 
   return (
@@ -2121,7 +2240,13 @@ function AiWorkflowPanel({
   const [briefingMessage, setBriefingMessage] = useState<string | null>(null);
 
   const enableMorningBriefing = async (): Promise<void> => {
+    // Reuse the existing rule (looked up by name) so repeated clicks update it in place instead
+    // of stacking duplicate automations.
+    const existing = (await api.automations.list()).find(
+      (rule) => rule.name === 'Morning briefing'
+    );
     await api.automations.upsert({
+      id: existing?.id,
       name: 'Morning briefing',
       enabled: true,
       trigger: {
@@ -2278,19 +2403,27 @@ function AutomationsPanel({
   const [actionType, setActionType] =
     useState<AutomationRule['actions'][number]['type']>('createTask');
   const [targetId, setTargetId] = useState('');
+  const [taskTitle, setTaskTitle] = useState('Follow up');
+  const [unreadAtLeast, setUnreadAtLeast] = useState('5');
   const [result, setResult] = useState('');
+  const unreadThreshold = (): number => {
+    const parsed = Number.parseInt(unreadAtLeast, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+  };
   const save = async (): Promise<void> => {
-    const actionValue = actionType === 'createTask' ? targetId || 'Follow up' : undefined;
     await api.automations.upsert({
       name,
       enabled: true,
       trigger: {
         type: triggerType,
         matchText: matchText.trim() || undefined,
-        unreadAtLeast: triggerType === 'unreadThreshold' ? 5 : undefined
+        unreadAtLeast: triggerType === 'unreadThreshold' ? unreadThreshold() : undefined
       },
       actions: [
-        { type: actionType, targetId: actionValue ? null : targetId || null, value: actionValue }
+        // createTask carries the task title as its value; every other action targets an entity.
+        actionType === 'createTask'
+          ? { type: actionType, targetId: null, value: taskTitle.trim() || 'Follow up' }
+          : { type: actionType, targetId: targetId || null }
       ]
     });
     setResult('Automation saved.');
@@ -2298,7 +2431,11 @@ function AutomationsPanel({
   };
   const testDraft = async (): Promise<void> => {
     const test = await api.automations.test({
-      trigger: { type: triggerType, matchText: matchText || undefined, unreadAtLeast: 5 },
+      trigger: {
+        type: triggerType,
+        matchText: matchText || undefined,
+        unreadAtLeast: unreadThreshold()
+      },
       sample: { title: matchText || 'Sample notification', body: 'Sample body', unread: 7 }
     });
     setResult(`${test.matched ? 'Matched' : 'No match'}: ${test.reasons.join(' ')}`);
@@ -2328,6 +2465,14 @@ function AutomationsPanel({
             value={matchText}
             onChange={(event) => setMatchText(event.target.value)}
           />
+          {triggerType === 'unreadThreshold' && (
+            <input
+              className="field"
+              placeholder="Unread at least"
+              value={unreadAtLeast}
+              onChange={(event) => setUnreadAtLeast(event.target.value)}
+            />
+          )}
           <select
             className="field"
             value={actionType}
@@ -2342,28 +2487,37 @@ function AutomationsPanel({
             <option value="sleepService">Sleep service</option>
             <option value="wakeService">Wake service</option>
           </select>
-          <select
-            className="field"
-            value={targetId}
-            onChange={(event) => setTargetId(event.target.value)}
-          >
-            <option value="">Target or task title</option>
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                Workspace: {workspace.name}
-              </option>
-            ))}
-            {services.map((service) => (
-              <option key={service.id} value={service.id}>
-                Service: {service.display_name}
-              </option>
-            ))}
-            {aiPrompts.map((prompt) => (
-              <option key={prompt.id} value={prompt.id}>
-                Prompt: {prompt.title}
-              </option>
-            ))}
-          </select>
+          {actionType === 'createTask' ? (
+            <input
+              className="field"
+              placeholder="Task title"
+              value={taskTitle}
+              onChange={(event) => setTaskTitle(event.target.value)}
+            />
+          ) : (
+            <select
+              className="field"
+              value={targetId}
+              onChange={(event) => setTargetId(event.target.value)}
+            >
+              <option value="">Target</option>
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  Workspace: {workspace.name}
+                </option>
+              ))}
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  Service: {service.display_name}
+                </option>
+              ))}
+              {aiPrompts.map((prompt) => (
+                <option key={prompt.id} value={prompt.id}>
+                  Prompt: {prompt.title}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-2">
             <button className="app-button" onClick={() => void testDraft()}>
               Test
@@ -3636,9 +3790,25 @@ function Metric({ label, value }: { label: string; value: string }): JSX.Element
   );
 }
 
-function numberOrNull(value: string): number | null {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+/**
+ * Tri-state sleep timing: unset (undefined) falls back to the app default, an explicit null means
+ * never, and a positive number is a custom threshold. The UI must round-trip all three without
+ * collapsing "unset" into "never".
+ */
+type SleepTimingChoice = 'default' | 'never' | 'custom';
+
+function sleepTimingChoice(value: number | null | undefined): SleepTimingChoice {
+  if (value === undefined) return 'default';
+  if (value === null) return 'never';
+  return 'custom';
+}
+
+/** Only an explicit "never" produces null; unparsable custom input falls back to unset/default. */
+function sleepMinutesFrom(choice: SleepTimingChoice, minutes: string): number | null | undefined {
+  if (choice === 'never') return null;
+  if (choice === 'default') return undefined;
+  const parsed = Number.parseInt(minutes, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function numberOrDefault(value: string, fallback: number): number {
