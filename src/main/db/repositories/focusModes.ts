@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { FocusMode, FocusModeStatus } from '../../../shared/types.js';
 import { parseJson, stringifyJson, toBool } from './json.js';
+import { deleteMeta, getMeta, setMeta } from './meta.js';
 
 interface FocusModeRow {
   id: string;
@@ -73,6 +74,28 @@ export function upsertFocusMode(
 
 export function deleteFocusMode(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM focus_modes WHERE id = ?').run(id);
+  if (manualFocusModeId(db) === id) {
+    setManualFocusMode(db, null);
+  }
+}
+
+/**
+ * Manual activation. Schedules answer "when should this mode apply"; this answers "apply it
+ * now, regardless". Local-only (meta, never synced) because it describes what this device is
+ * doing right now, not shared configuration. Persists until cleared.
+ */
+const MANUAL_FOCUS_KEY = 'focus_mode_manual_id';
+
+export function manualFocusModeId(db: Database.Database): string | null {
+  return getMeta(db, MANUAL_FOCUS_KEY) || null;
+}
+
+export function setManualFocusMode(db: Database.Database, id: string | null): void {
+  if (id === null) {
+    deleteMeta(db, MANUAL_FOCUS_KEY);
+    return;
+  }
+  setMeta(db, MANUAL_FOCUS_KEY, id);
 }
 
 export function focusModeStatus(db: Database.Database, now = new Date()): FocusModeStatus {
@@ -85,15 +108,26 @@ export function focusModeStatus(db: Database.Database, now = new Date()): FocusM
       .filter((entry) => entry.next !== null)
       .sort((a, b) => Number(a.next) - Number(b.next))[0]?.mode ??
     null;
-  return { activeMode, nextMode, now: now.getTime() };
+  return {
+    activeMode,
+    nextMode,
+    now: now.getTime(),
+    manuallyActivated: activeMode !== null && manualFocusModeId(db) === activeMode.id
+  };
 }
 
 export function activeFocusMode(db: Database.Database, now = new Date()): FocusMode | null {
-  return (
-    listFocusModes(db)
-      .filter((mode) => mode.enabled)
-      .find((mode) => isActive(mode.schedule, now)) ?? null
-  );
+  const enabled = listFocusModes(db).filter((mode) => mode.enabled);
+  // A mode the user (or an automation) switched on explicitly outclasses any schedule. A
+  // disabled mode is not eligible, so toggling it off is also a way to stand down.
+  const manualId = manualFocusModeId(db);
+  if (manualId) {
+    const manual = enabled.find((mode) => mode.id === manualId);
+    if (manual) {
+      return manual;
+    }
+  }
+  return enabled.find((mode) => isActive(mode.schedule, now)) ?? null;
 }
 
 // A workspace-bound mode only governs services that are members of that workspace.

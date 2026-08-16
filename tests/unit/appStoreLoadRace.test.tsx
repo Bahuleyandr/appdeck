@@ -51,7 +51,7 @@ function makeBridge(slowWorkspaceId: string) {
 
 describe('appStore load/selectWorkspace race', () => {
   beforeEach(() => {
-    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false });
     useAppStore.setState({ selectedWorkspaceId: 'ws-a', workspaces: [], loading: true });
   });
 

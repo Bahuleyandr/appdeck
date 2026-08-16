@@ -316,6 +316,8 @@ export const ipcSchemas = {
   }),
   'focusMode:delete': z.object({ id: idSchema }),
   'focusMode:status': z.void(),
+  /** null stands the current mode down; an id forces that mode on regardless of its schedule. */
+  'focusMode:activate': z.object({ id: idSchema.nullable() }),
 
   'browserImport:preview': z.object({ data: z.string().min(1) }),
   'browserImport:run': z.object({

@@ -597,14 +597,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   requestViewsResync: () =>
     set((current) => ({ viewsResyncNonce: current.viewsResyncNonce + 1 })),
   activateFocusMode: async (focusModeId) => {
-    // Focus modes have no manual-activation IPC — enabling the mode is the strongest lever the
-    // renderer has; the schedule then decides when it is in force.
     const modes = await api.focusModes.list();
     const mode = modes.find((candidate) => candidate.id === focusModeId);
     if (!mode) return;
+    // A disabled mode is not eligible to be active, so enable it before forcing it on.
     if (!mode.enabled) {
       await api.focusModes.upsert({ ...mode, enabled: true });
     }
+    await api.focusModes.activate(focusModeId);
     if (mode.workspace_id) {
       await get().selectWorkspace(mode.workspace_id);
     }

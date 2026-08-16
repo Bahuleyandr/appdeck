@@ -348,6 +348,8 @@ export interface FocusModeStatus {
   activeMode: FocusMode | null;
   nextMode: FocusMode | null;
   now: number;
+  /** True when activeMode is in force because it was switched on explicitly, not by schedule. */
+  manuallyActivated: boolean;
 }
 
 export interface BrowserImportItem {

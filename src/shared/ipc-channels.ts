@@ -75,6 +75,7 @@ export const invokeChannels = [
   'focusMode:upsert',
   'focusMode:delete',
   'focusMode:status',
+  'focusMode:activate',
   'browserImport:preview',
   'browserImport:run',
   'recipeStudio:analyze',

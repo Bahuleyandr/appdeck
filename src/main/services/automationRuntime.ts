@@ -8,6 +8,7 @@ import {
   scheduleSlotStart,
   testAutomation
 } from '../db/repositories/automations.js';
+import { setManualFocusMode } from '../db/repositories/focusModes.js';
 import { createTask } from '../db/repositories/tasks.js';
 
 export interface AutomationRuntimeDeps {
@@ -155,6 +156,9 @@ export class AutomationRuntime {
       return;
     }
     if (action.type === 'setFocusMode' && action.targetId) {
+      // Actually put the mode in force here rather than hoping the renderer does something with
+      // the event — notification muting and sleep overrides are decided in main.
+      setManualFocusMode(this.deps.db, action.targetId);
       this.deps.sendPush('event:focus-mode-requested', { focusModeId: action.targetId });
     }
   }

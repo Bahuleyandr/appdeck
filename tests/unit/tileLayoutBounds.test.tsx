@@ -10,7 +10,10 @@ interface BoundsPayload {
   visibleIds: string[];
 }
 
-const invoke = vi.fn((channel: string) => {
+// The second parameter is unused here but must exist so mock.calls is typed as a 2-tuple —
+// boundsCalls() reads the payload out of index 1.
+const invoke = vi.fn((channel: string, payload?: unknown) => {
+  void payload;
   if (channel === 'tab:list') return Promise.resolve([]);
   return Promise.resolve(undefined);
 });
@@ -56,7 +59,7 @@ async function flushFrame(): Promise<void> {
 function boundsCalls(): BoundsPayload[] {
   return invoke.mock.calls
     .filter(([channel]) => channel === 'view:setBounds')
-    .map(([, payload]) => payload as unknown as BoundsPayload);
+    .map(([, payload]) => payload as BoundsPayload);
 }
 
 describe('TileLayout native view bounds', () => {
@@ -66,12 +69,12 @@ describe('TileLayout native view bounds', () => {
       configurable: true,
       value: { invoke, on: vi.fn(() => () => undefined) }
     });
-    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof matchMedia;
-    global.ResizeObserver = class {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+    globalThis.ResizeObserver = class {
       observe(): void {}
       unobserve(): void {}
       disconnect(): void {}
-    } as unknown as typeof ResizeObserver;
+    };
     useAppStore.setState({
       services: [service('svc-1')],
       selectedServiceIds: ['svc-1'],
