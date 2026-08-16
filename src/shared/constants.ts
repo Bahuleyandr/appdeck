@@ -19,6 +19,3 @@ export const AI_DEFAULT_MODEL = 'claude-opus-4-8';
 export const APP_PROTOCOL = 'appdeck';
 /** Default global hotkey to toggle the window. */
 export const DEFAULT_GLOBAL_HOTKEY = 'CommandOrControl+Shift+Space';
-/** Keep captured notifications this long, then prune. */
-export const NOTIFICATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-export type ThemePreference = 'system' | 'light' | 'dark';

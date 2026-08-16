@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import type { IpcChannel } from './ipc-channels.js';
+
+export { invokeChannels, pushChannels } from './ipc-channels.js';
+export type { IpcChannel, PushChannel } from './ipc-channels.js';
 
 export function isHttpUrl(value: string): boolean {
   try {
@@ -12,7 +16,6 @@ export function isHttpUrl(value: string): boolean {
 export const httpUrlSchema = z.string().refine(isHttpUrl, { message: 'URL must be http(s)' });
 
 export const idSchema = z.string().min(1);
-export const optionalStringSchema = z.string().min(1).nullable().optional();
 
 // Fractional values from getBoundingClientRect are expected; main rounds + clamps in normalizeRect.
 export const rectSchema = z.object({
@@ -142,17 +145,6 @@ export const servicePatchSchema = z.object({
   spellcheck: z.boolean().optional()
 });
 
-export const customRecipePatchSchema = z.object({
-  name: z.string().min(1).optional(),
-  category: serviceCategorySchema.optional(),
-  start_url: httpUrlSchema.optional(),
-  allowed_domains: z.array(z.string().min(1)).optional(),
-  icon_path: z.string().nullable().optional(),
-  default_user_agent: z.string().nullable().optional(),
-  unread_spec: declarativeUnreadSpecSchema.optional(),
-  mobile_mode: z.boolean().optional()
-});
-
 export const ipcSchemas = {
   'workspace:list': z.void(),
   'workspace:create': z.object({
@@ -195,7 +187,6 @@ export const ipcSchemas = {
   'service:reload': z.object({ id: idSchema }),
   'service:navigateBack': z.object({ id: idSchema }),
   'service:navigateForward': z.object({ id: idSchema }),
-  'service:navigate': z.object({ id: idSchema, url: httpUrlSchema }),
   'service:sleep': z.object({ id: idSchema }),
   'service:wake': z.object({ id: idSchema }),
   'service:openExternal': z.object({ id: idSchema }),
@@ -229,8 +220,6 @@ export const ipcSchemas = {
     unread_spec: declarativeUnreadSpecSchema.optional(),
     mobile_mode: z.boolean().optional()
   }),
-  'recipe:updateCustom': z.object({ id: idSchema, patch: customRecipePatchSchema }),
-  'recipe:deleteCustom': z.object({ id: idSchema }),
   'recipe:resolveForInstance': z.object({ instanceId: idSchema }),
   'registry:search': z
     .object({ q: z.string().optional(), limit: z.number().int().positive().max(2000).optional() })
@@ -407,8 +396,6 @@ export const ipcSchemas = {
     recoveryPhrase: z.string().min(1),
     passphrase: z.string().min(1)
   }),
-  'sync:exportVault': z.object({ targetPath: z.string().min(1), passphrase: z.string().min(1) }),
-  'sync:importVault': z.object({ sourcePath: z.string().min(1), passphrase: z.string().min(1) }),
   'sync:now': z.void(),
 
   'task:list': z.void(),
@@ -418,7 +405,6 @@ export const ipcSchemas = {
     patch: z.object({ title: z.string().min(1).optional(), done: z.boolean().optional() })
   }),
   'task:delete': z.object({ id: idSchema }),
-  'task:reorder': z.object({ orderedIds: z.array(idSchema) }),
 
   'palette:query': z.object({ q: z.string() }),
 
@@ -539,27 +525,9 @@ export const ipcSchemas = {
   }),
   'account:logout': z.void(),
   'account:syncNow': z.void()
-} as const;
-
-export type IpcChannel = keyof typeof ipcSchemas;
-
-export const pushChannels = [
-  'event:unread',
-  'event:notification-clicked',
-  'event:service-state',
-  'event:locked',
-  'event:data-changed',
-  'event:notification',
-  'event:update-status',
-  'event:settings-changed',
-  'event:custom-code-pending',
-  'event:ai-run',
-  'event:views-resync-requested',
-  'event:workspace-open-requested',
-  'event:focus-mode-requested'
-] as const;
-
-export type PushChannel = (typeof pushChannels)[number];
+  // `satisfies` keeps the schema map in exact lockstep with the shared channel-name list: a
+  // missing or extra key here is a compile error.
+} as const satisfies Record<IpcChannel, z.ZodType>;
 
 export function parseIpcPayload<T extends IpcChannel>(
   channel: T,

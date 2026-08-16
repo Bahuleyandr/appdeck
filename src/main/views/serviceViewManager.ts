@@ -192,12 +192,6 @@ export class ServiceViewManager {
     }
   }
 
-  navigate(idOrViewId: string, url: string): void {
-    if (!isHttpUrl(url)) return;
-    const contents = this.contentsFor(idOrViewId);
-    if (contents) void contents.loadURL(url);
-  }
-
   routeNavigate(instanceId: string, url: string): void {
     if (!isHttpUrl(url)) return;
     const contents = this.contentsFor(instanceId);

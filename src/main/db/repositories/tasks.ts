@@ -48,10 +48,3 @@ export function updateTask(db: Database.Database, id: string, patch: Partial<Pic
 export function deleteTask(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
 }
-
-export function reorderTasks(db: Database.Database, orderedIds: string[]): void {
-  const stmt = db.prepare('UPDATE tasks SET position = ? WHERE id = ?');
-  db.transaction(() => {
-    orderedIds.forEach((id, position) => stmt.run(position, id));
-  })();
-}

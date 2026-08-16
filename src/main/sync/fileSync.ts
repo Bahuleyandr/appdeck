@@ -81,18 +81,6 @@ export class FileSyncService {
     return { ok: true };
   }
 
-  async exportVault(targetPath: string, passphrase: string): Promise<void> {
-    // Manual export to an arbitrary path — does not touch the live sync state.
-    await writeVaultFile(this.db, await this.requireRootKey(passphrase), targetPath);
-  }
-
-  async importVault(sourcePath: string, passphrase: string): Promise<SyncResult> {
-    const plaintext = await readVaultFile(sourcePath, await this.requireRootKey(passphrase));
-    const result = mergeVaultPlaintext(this.db, plaintext);
-    setMeta(this.db, 'sync_last_at', String(Date.now()));
-    return result;
-  }
-
   // Deliberately not `async`: callers awaiting a coalesced call must receive the SAME in-flight
   // promise, and an async wrapper would mint a new one per call.
   syncNow(): Promise<SyncResult> {
