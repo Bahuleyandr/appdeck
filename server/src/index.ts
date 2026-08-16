@@ -10,6 +10,12 @@
 export interface Env {
   DB: D1Database;
   TOKEN_SECRET: string;
+  /** Fixed-window length for auth rate limiting, in seconds. Default 600 (10 minutes). */
+  RATE_LIMIT_WINDOW_SECONDS?: string;
+  /** Max login / auth-params attempts per IP per window. Default 10. */
+  RATE_LIMIT_AUTH_MAX?: string;
+  /** Max signups per IP per window (stricter: accounts are cheap D1 rows). Default 5. */
+  RATE_LIMIT_SIGNUP_MAX?: string;
 }
 
 interface UserRow {
@@ -31,9 +37,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/signup')
         return await signup(request, env);
       if (request.method === 'GET' && url.pathname === '/api/auth-params')
-        return await authParams(url, env);
+        return await authParams(request, url, env);
       if (request.method === 'POST' && url.pathname === '/api/login')
         return await login(request, env);
+      if (request.method === 'POST' && url.pathname === '/api/logout')
+        return await logout(request, env);
       if (request.method === 'GET' && url.pathname === '/api/vault')
         return await getVault(request, env);
       if (request.method === 'PUT' && url.pathname === '/api/vault')
@@ -47,6 +55,8 @@ export default {
 };
 
 async function signup(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env, 'signup', rateLimits(env).signupMax);
+  if (limited) return limited;
   const body = (await request.json()) as {
     email?: string;
     authSalt?: string;
@@ -70,7 +80,9 @@ async function signup(request: Request, env: Env): Promise<Response> {
   return json({ token: await mintToken(id, env) });
 }
 
-async function authParams(url: URL, env: Env): Promise<Response> {
+async function authParams(request: Request, url: URL, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env, 'auth-params', rateLimits(env).authMax);
+  if (limited) return limited;
   const email = normalizeEmail(url.searchParams.get('email'));
   if (!email) return json({ error: 'invalid_request' }, 400);
   const user = (await env.DB.prepare('SELECT auth_salt FROM users WHERE email = ?')
@@ -80,6 +92,8 @@ async function authParams(url: URL, env: Env): Promise<Response> {
 }
 
 async function login(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env, 'login', rateLimits(env).authMax);
+  if (limited) return limited;
   const body = (await request.json()) as { email?: string; authHash?: string };
   const email = normalizeEmail(body.email);
   if (!email || !body.authHash) return json({ error: 'invalid_request' }, 400);
@@ -91,6 +105,22 @@ async function login(request: Request, env: Env): Promise<Response> {
     return json({ error: 'invalid_credentials' }, 401);
   }
   return json({ token: await mintToken(user.id, env), wrappedKey: user.wrapped_key });
+}
+
+/**
+ * Revokes the presented token's session. Requires a validly signed, unexpired token but is
+ * idempotent for already-revoked sessions — the client fires this on sign-out and clears local
+ * state regardless of the outcome.
+ */
+async function logout(request: Request, env: Env): Promise<Response> {
+  const claims = await verifyToken(request, env);
+  if (!claims) return json({ error: 'unauthorized' }, 401);
+  await env.DB.prepare(
+    'UPDATE sessions SET revoked_at = ? WHERE jti = ? AND user_id = ? AND revoked_at IS NULL'
+  )
+    .bind(Date.now(), claims.jti, claims.userId)
+    .run();
+  return json({ ok: true });
 }
 
 async function getVault(request: Request, env: Env): Promise<Response> {
@@ -130,24 +160,114 @@ async function putVault(request: Request, env: Env): Promise<Response> {
   return json({ revision: body.revision });
 }
 
-// --- tokens (stateless HMAC) ---
+// --- rate limiting (D1-backed fixed window; no Durable Objects, free-tier friendly) ---
+//
+// Keyed on "<route>:<client-ip>". One UPSERT atomically opens/advances the window and bumps the
+// counter; stale rows (older than two windows) are deleted on the same request, so the table
+// stays bounded without cron triggers. For real deployments, Cloudflare's WAF rate-limiting
+// rules are the recommended belt-and-suspenders outer layer (see server/README.md).
+
+interface RateLimitConfig {
+  windowMs: number;
+  authMax: number;
+  signupMax: number;
+}
+
+function rateLimits(env: Env): RateLimitConfig {
+  return {
+    windowMs: positiveInt(env.RATE_LIMIT_WINDOW_SECONDS, 600) * 1000,
+    authMax: positiveInt(env.RATE_LIMIT_AUTH_MAX, 10),
+    signupMax: positiveInt(env.RATE_LIMIT_SIGNUP_MAX, 5)
+  };
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+/** Returns a 429 response when the caller is over budget for `route`, else null. */
+async function enforceRateLimit(
+  request: Request,
+  env: Env,
+  route: string,
+  max: number
+): Promise<Response | null> {
+  const { windowMs } = rateLimits(env);
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const now = Date.now();
+  // Cheap cleanup on write: anything older than two windows can never be consulted again.
+  await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
+    .bind(now - 2 * windowMs)
+    .run();
+  const row = (await env.DB.prepare(
+    'INSERT INTO rate_limits (rl_key, window_start, count) VALUES (?, ?, 1) ' +
+      'ON CONFLICT(rl_key) DO UPDATE SET ' +
+      'count = CASE WHEN rate_limits.window_start <= ? THEN 1 ELSE rate_limits.count + 1 END, ' +
+      'window_start = CASE WHEN rate_limits.window_start <= ? THEN excluded.window_start ELSE rate_limits.window_start END ' +
+      'RETURNING window_start, count'
+  )
+    .bind(`${route}:${ip}`, now, now - windowMs, now - windowMs)
+    .first()) as { window_start: number; count: number };
+  if (row.count > max) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((row.window_start + windowMs - now) / 1000));
+    return json({ error: 'rate_limited', retryAfter: retryAfterSeconds }, 429, {
+      'retry-after': String(retryAfterSeconds)
+    });
+  }
+  return null;
+}
+
+// --- tokens (HMAC-signed, revocable via the sessions table) ---
+//
+// Format: `<userId>.<jti>.<exp>.<sig>` where sig = HMAC-SHA256(TOKEN_SECRET, "userId.jti.exp").
+// The jti references a `sessions` row; a missing or revoked row invalidates the token even
+// before `exp`. Legacy 3-part tokens (pre-jti) are rejected — clients re-login once.
+
+interface TokenClaims {
+  userId: string;
+  jti: string;
+}
 
 async function mintToken(userId: string, env: Env): Promise<string> {
-  const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
-  const payload = `${userId}.${exp}`;
+  const now = Date.now();
+  const jti = crypto.randomUUID();
+  const exp = Math.floor(now / 1000) + TOKEN_TTL_SECONDS;
+  // Opportunistic pruning: expired sessions can never authenticate again, drop them here so the
+  // table stays bounded without cron triggers.
+  await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now).run();
+  await env.DB.prepare(
+    'INSERT INTO sessions (jti, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
+  )
+    .bind(jti, userId, now, exp * 1000)
+    .run();
+  const payload = `${userId}.${jti}.${exp}`;
   return `${payload}.${await hmac(payload, env.TOKEN_SECRET)}`;
 }
 
-async function requireUser(request: Request, env: Env): Promise<string | null> {
+/** Checks signature + expiry only (no revocation lookup). Used by logout for idempotency. */
+async function verifyToken(request: Request, env: Env): Promise<TokenClaims | null> {
   const auth = request.headers.get('authorization');
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return null;
   const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  const [userId, exp, sig] = parts as [string, string, string];
-  if (!timingSafeEqual(sig, await hmac(`${userId}.${exp}`, env.TOKEN_SECRET))) return null;
+  if (parts.length !== 4) return null; // includes legacy 3-part tokens: force a re-login
+  const [userId, jti, exp, sig] = parts as [string, string, string, string];
+  if (!timingSafeEqual(sig, await hmac(`${userId}.${jti}.${exp}`, env.TOKEN_SECRET))) return null;
   if (Number(exp) * 1000 < Date.now()) return null;
-  return userId;
+  return { userId, jti };
+}
+
+async function requireUser(request: Request, env: Env): Promise<string | null> {
+  const claims = await verifyToken(request, env);
+  if (!claims) return null;
+  const session = (await env.DB.prepare(
+    'SELECT revoked_at FROM sessions WHERE jti = ? AND user_id = ?'
+  )
+    .bind(claims.jti, claims.userId)
+    .first()) as { revoked_at: number | null } | null;
+  if (!session || session.revoked_at !== null) return null;
+  return claims.userId;
 }
 
 async function hmac(data: string, secret: string): Promise<string> {
@@ -192,9 +312,9 @@ function normalizeEmail(value: string | null | undefined): string | null {
   return email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : null;
 }
 
-function json(body: unknown, status = 200): Response {
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' }
+    headers: { 'content-type': 'application/json', ...headers }
   });
 }
