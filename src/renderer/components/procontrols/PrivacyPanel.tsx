@@ -148,6 +148,7 @@ export function PrivacyPanel({
               </div>
               <button
                 className="icon-button"
+                aria-label="Delete policy"
                 title="Delete policy"
                 onClick={() => void api.permissions.delete(policy.id).then(refresh)}
               >

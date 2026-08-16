@@ -62,6 +62,7 @@ export function SnapshotsPanel({
           </button>
           <button
             className="icon-button"
+            aria-label="Delete"
             title="Delete"
             onClick={() => void api.snapshots.delete(snapshot.id).then(refresh)}
           >

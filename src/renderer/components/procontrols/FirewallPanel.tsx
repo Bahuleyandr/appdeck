@@ -116,6 +116,7 @@ export function FirewallPanel({
           </div>
           <button
             className="icon-button"
+            aria-label="Delete"
             title="Delete"
             onClick={() => void api.firewall.delete(rule.id).then(refresh)}
           >

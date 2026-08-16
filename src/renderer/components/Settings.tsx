@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AiProvider, AiStatus, AppMetrics, ExtensionRecord } from '../../shared/types';
 import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
@@ -41,6 +41,7 @@ export function Settings(): JSX.Element | null {
   const [accEmail, setAccEmail] = useState('');
   const [accPassword, setAccPassword] = useState('');
   const [accMsg, setAccMsg] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!settingsOpen) return undefined;
@@ -58,6 +59,12 @@ export function Settings(): JSX.Element | null {
     return api.on('event:update-status', (payload) =>
       setUpdateStatus((payload as { status?: string }).status ?? '')
     );
+  }, [settingsOpen]);
+
+  // Initial focus lands on the dialog itself so Escape closes it and Tab starts inside it.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    dialogRef.current?.focus();
   }, [settingsOpen]);
 
   if (!settingsOpen) return null;
@@ -86,19 +93,37 @@ export function Settings(): JSX.Element | null {
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55">
-      <section className="flex max-h-[88vh] w-[680px] flex-col rounded-md border border-line bg-panel shadow-2xl">
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setSettingsOpen(false);
+        }}
+        className="flex max-h-[88vh] w-[680px] flex-col rounded-md border border-line bg-panel shadow-2xl"
+      >
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
           <div className="text-sm font-semibold">Settings</div>
-          <button className="icon-button" title="Close" onClick={() => setSettingsOpen(false)}>
-            <X size={16} />
+          <button
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            onClick={() => setSettingsOpen(false)}
+          >
+            <X size={16} aria-hidden="true" />
           </button>
         </header>
         <div className="space-y-6 overflow-y-auto p-4">
           <section>
             <div className="mb-2 text-sm font-semibold">Appearance</div>
             <div className="flex items-center gap-2">
-              <span className="w-28 text-xs text-muted">Theme</span>
+              <label htmlFor="settings-theme" className="w-28 text-xs text-muted">
+                Theme
+              </label>
               <select
+                id="settings-theme"
                 className="field flex-1"
                 value={settings.theme}
                 onChange={(event) => void setSettingValue('theme', event.target.value)}
@@ -132,8 +157,11 @@ export function Settings(): JSX.Element | null {
           />
 
           <section>
-            <div className="mb-2 text-sm font-semibold">Global hotkey</div>
+            <label htmlFor="settings-global-hotkey" className="mb-2 block text-sm font-semibold">
+              Global hotkey
+            </label>
             <input
+              id="settings-global-hotkey"
               className="field w-full"
               value={settings.global_hotkey}
               placeholder="CommandOrControl+Shift+Space"
@@ -151,6 +179,7 @@ export function Settings(): JSX.Element | null {
             <div className="grid gap-2 sm:grid-cols-2">
               <select
                 className="field"
+                aria-label="AI provider"
                 value={aiProvider}
                 onChange={(event) => setAiProvider(event.target.value as AiProvider)}
               >
@@ -164,18 +193,21 @@ export function Settings(): JSX.Element | null {
               </select>
               <input
                 className="field"
+                aria-label="Model"
                 value={aiModel}
                 placeholder="Model"
                 onChange={(event) => setAiModel(event.target.value)}
               />
               <input
                 className="field sm:col-span-2"
+                aria-label="Base URL"
                 value={aiBaseUrl}
                 placeholder="Base URL for OpenAI-compatible, Gemini, or Ollama"
                 onChange={(event) => setAiBaseUrl(event.target.value)}
               />
               <input
                 className="field sm:col-span-2"
+                aria-label="API key"
                 type="password"
                 value={aiKey}
                 placeholder={aiProvider === 'ollama' ? 'Optional API key' : 'API key'}
@@ -239,6 +271,7 @@ export function Settings(): JSX.Element | null {
             <div className="flex gap-2">
               <input
                 className="field flex-1"
+                aria-label="Path to unpacked extension folder"
                 value={extensionPath}
                 placeholder="Path to unpacked extension folder"
                 onChange={(event) => setExtensionPath(event.target.value)}
@@ -283,6 +316,7 @@ export function Settings(): JSX.Element | null {
             <div className="mb-2 text-sm font-semibold">Import from Ferdium / Rambox</div>
             <textarea
               className="field h-20 w-full py-2"
+              aria-label="Exported services JSON"
               value={ferdium}
               placeholder="Paste exported services JSON here"
               onChange={(event) => setFerdium(event.target.value)}
@@ -305,24 +339,30 @@ export function Settings(): JSX.Element | null {
               >
                 Import
               </button>
-              {importMsg && <span className="text-xs text-muted">{importMsg}</span>}
+              {importMsg && (
+                <span role="status" aria-live="polite" className="text-xs text-muted">
+                  {importMsg}
+                </span>
+              )}
             </div>
           </section>
 
           <section>
             <div className="mb-2 text-sm font-semibold">Sync</div>
-            <div className="mb-2 text-xs text-muted">
+            <div aria-live="polite" className="mb-2 text-xs text-muted">
               {syncStatus.configured ? syncStatus.folderPath : 'Not configured'}
             </div>
             <div className="grid grid-cols-[1fr_160px] gap-2">
               <input
                 className="field"
+                aria-label="Sync folder path"
                 value={folder}
                 onChange={(event) => setFolder(event.target.value)}
                 placeholder="Folder path"
               />
               <input
                 className="field"
+                aria-label="Sync passphrase"
                 value={syncPassphrase}
                 onChange={(event) => setSyncPassphrase(event.target.value)}
                 placeholder="Passphrase"
@@ -346,7 +386,12 @@ export function Settings(): JSX.Element | null {
               </button>
             </div>
             {recovery ? (
-              <textarea className="field mt-2 h-20 w-full py-2" readOnly value={recovery} />
+              <textarea
+                className="field mt-2 h-20 w-full py-2"
+                aria-label="Recovery phrase"
+                readOnly
+                value={recovery}
+              />
             ) : null}
           </section>
 
@@ -376,6 +421,7 @@ export function Settings(): JSX.Element | null {
               <>
                 <input
                   className="field mb-2 w-full"
+                  aria-label="Server URL"
                   value={serverUrl}
                   placeholder="Server URL (https://appdeck-sync.you.workers.dev)"
                   onChange={(event) => setServerUrl(event.target.value)}
@@ -383,12 +429,14 @@ export function Settings(): JSX.Element | null {
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     className="field"
+                    aria-label="Email"
                     value={accEmail}
                     placeholder="Email"
                     onChange={(event) => setAccEmail(event.target.value)}
                   />
                   <input
                     className="field"
+                    aria-label="Password"
                     type="password"
                     value={accPassword}
                     placeholder="Password"
@@ -423,7 +471,11 @@ export function Settings(): JSX.Element | null {
                 </div>
               </>
             )}
-            {accMsg && <div className="mt-2 text-xs text-muted">{accMsg}</div>}
+            {accMsg && (
+              <div role="status" aria-live="polite" className="mt-2 text-xs text-muted">
+                {accMsg}
+              </div>
+            )}
           </section>
 
           <section>
@@ -431,6 +483,7 @@ export function Settings(): JSX.Element | null {
             <div className="flex gap-2">
               <input
                 className="field flex-1"
+                aria-label="Lock passphrase or PIN"
                 value={lockPassphrase}
                 onChange={(event) => setLockPassphrase(event.target.value)}
                 placeholder="Passphrase or PIN"
@@ -500,6 +553,9 @@ function Toggle({
       <span className="text-sm">{label}</span>
       <button
         className={`h-6 w-11 rounded-full border border-line transition ${value ? 'bg-accent' : 'bg-shell'}`}
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
         onClick={() => onChange(!value)}
         title={label}
       >

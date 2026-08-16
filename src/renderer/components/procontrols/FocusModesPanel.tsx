@@ -111,6 +111,7 @@ export function FocusModesPanel({
               </button>
               <button
                 className="icon-button"
+                aria-label="Delete"
                 title="Delete"
                 onClick={() => void api.focusModes.delete(mode.id).then(refresh)}
               >

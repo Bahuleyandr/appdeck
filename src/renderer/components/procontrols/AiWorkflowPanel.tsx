@@ -148,6 +148,7 @@ export function AiWorkflowPanel({
                 </button>
                 <button
                   className="icon-button"
+                  aria-label="Delete prompt"
                   title="Delete prompt"
                   onClick={() => void api.aiPrompts.delete(saved.id).then(refresh)}
                 >

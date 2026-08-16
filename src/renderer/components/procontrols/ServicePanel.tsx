@@ -144,12 +144,14 @@ export function ServicePanel({
         <div className="space-y-2">
           <input
             className="field w-full"
+            aria-label="Display name"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
           />
           <ColorRow value={color} onChange={setColor} />
           <select
             className="field w-full"
+            aria-label="Profile"
             value={profileId}
             onChange={(event) => setProfileId(event.target.value)}
           >
@@ -311,6 +313,7 @@ export function ServicePanel({
         <div className="grid gap-2 lg:grid-cols-[140px_1fr_120px_1fr]">
           <select
             className="field"
+            aria-label="Proxy mode"
             value={proxyMode}
             onChange={(event) => setProxyMode(event.target.value as ServiceProxy['mode'])}
           >
@@ -370,7 +373,11 @@ export function ServicePanel({
             Copy URL
           </button>
         </div>
-        {currentUrl && <div className="mt-2 truncate text-xs text-muted">{currentUrl}</div>}
+        {currentUrl && (
+          <div role="status" aria-live="polite" className="mt-2 truncate text-xs text-muted">
+            {currentUrl}
+          </div>
+        )}
       </section>
 
       <section className="panel rounded-md p-3 xl:col-span-2">

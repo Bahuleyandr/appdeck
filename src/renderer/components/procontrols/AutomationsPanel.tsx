@@ -173,6 +173,7 @@ export function AutomationsPanel({
             </div>
             <button
               className="icon-button"
+              aria-label="Delete"
               title="Delete"
               onClick={() => void api.automations.delete(automation.id).then(refresh)}
             >

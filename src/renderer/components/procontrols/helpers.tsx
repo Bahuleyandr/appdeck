@@ -48,6 +48,8 @@ export function ColorRow({
           key={color}
           className={`h-7 w-7 rounded-full border ${value === color ? 'border-white ring-2 ring-accent/60' : 'border-line'}`}
           style={{ backgroundColor: color }}
+          aria-label={`Color ${color}`}
+          aria-pressed={value === color}
           title={color}
           onClick={() => onChange(color)}
         />

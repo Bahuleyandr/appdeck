@@ -48,7 +48,7 @@ export function SyncPanel({
           <div className="rounded-md border border-line p-2 text-muted">
             {syncStatus.configured ? syncStatus.folderPath : 'File sync is not configured.'}
           </div>
-          <div className="rounded-md border border-line p-2 text-muted">
+          <div aria-live="polite" className="rounded-md border border-line p-2 text-muted">
             {syncStatus.lastError
               ? `Last sync failed: ${syncStatus.lastError}`
               : syncStatus.lastSyncAt
@@ -79,18 +79,21 @@ export function SyncPanel({
           </div>
           <input
             className="field w-full"
+            aria-label="Server URL"
             value={serverUrl}
             placeholder="https://your-worker.example.com"
             onChange={(event) => setServerUrl(event.target.value)}
           />
           <input
             className="field w-full"
+            aria-label="Email"
             value={email}
             placeholder="Email"
             onChange={(event) => setEmail(event.target.value)}
           />
           <input
             className="field w-full"
+            aria-label="Password"
             type="password"
             value={password}
             placeholder="Password"
@@ -130,7 +133,11 @@ export function SyncPanel({
               Server URL must start with http:// or https://.
             </div>
           )}
-          {message && <div className="text-xs text-muted">{message}</div>}
+          {message && (
+            <div role="status" aria-live="polite" className="text-xs text-muted">
+              {message}
+            </div>
+          )}
         </div>
       </section>
     </div>

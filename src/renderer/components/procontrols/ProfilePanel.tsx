@@ -110,6 +110,7 @@ function EditableProfile({
         <input className="field" value={color} onChange={(event) => setColor(event.target.value)} />
         <button
           className="icon-button"
+          aria-label="Delete profile"
           title="Delete profile"
           onClick={() => void deleteProfile(profile.id)}
         >

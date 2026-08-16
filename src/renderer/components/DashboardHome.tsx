@@ -10,7 +10,7 @@ import {
   Save,
   X
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DashboardSnapshot } from '../../shared/types';
 import { api } from '../ipc/client';
 import { useAppStore } from '../state/appStore';
@@ -29,6 +29,7 @@ export function DashboardHome(): JSX.Element | null {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [sessionName, setSessionName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
 
   const refresh = (): void => {
     void api.dashboards.snapshot(selectedWorkspaceId).then(setSnapshot);
@@ -39,22 +40,43 @@ export function DashboardHome(): JSX.Element | null {
     refresh();
   }, [dashboardOpen, selectedWorkspaceId]);
 
+  // Initial focus lands on the dialog itself so Escape closes it and Tab starts inside it.
+  useEffect(() => {
+    if (!dashboardOpen) return;
+    dialogRef.current?.focus();
+  }, [dashboardOpen]);
+
   if (!dashboardOpen) return null;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
-      <section className="flex h-[86vh] w-[1100px] max-w-[94vw] flex-col overflow-hidden rounded-md border border-line bg-panel shadow-2xl">
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dashboard Home"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setDashboardOpen(false);
+        }}
+        className="flex h-[86vh] w-[1100px] max-w-[94vw] flex-col overflow-hidden rounded-md border border-line bg-panel shadow-2xl"
+      >
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <LayoutDashboard size={16} className="text-accent" />
+            <LayoutDashboard size={16} aria-hidden="true" className="text-accent" />
             Dashboard Home
           </div>
           <div className="flex items-center gap-2">
-            <button className="icon-button" title="Refresh" onClick={refresh}>
-              <RefreshCw size={16} />
+            <button className="icon-button" aria-label="Refresh" title="Refresh" onClick={refresh}>
+              <RefreshCw size={16} aria-hidden="true" />
             </button>
-            <button className="icon-button" title="Close" onClick={() => setDashboardOpen(false)}>
-              <X size={16} />
+            <button
+              className="icon-button"
+              aria-label="Close"
+              title="Close"
+              onClick={() => setDashboardOpen(false)}
+            >
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         </header>
@@ -163,6 +185,7 @@ export function DashboardHome(): JSX.Element | null {
               <div className="grid gap-2">
                 <input
                   className="field"
+                  aria-label="Session name"
                   value={sessionName}
                   placeholder="Session name"
                   onChange={(event) => setSessionName(event.target.value)}
@@ -186,7 +209,11 @@ export function DashboardHome(): JSX.Element | null {
                 >
                   Save current view
                 </button>
-                {message && <div className="text-xs text-muted">{message}</div>}
+                {message && (
+                  <div role="status" aria-live="polite" className="text-xs text-muted">
+                    {message}
+                  </div>
+                )}
               </div>
               <div className="mt-3 space-y-1">
                 {(snapshot?.savedSessions ?? []).slice(0, 5).map((session) => (

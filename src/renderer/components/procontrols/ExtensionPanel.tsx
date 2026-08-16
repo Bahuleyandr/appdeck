@@ -58,6 +58,7 @@ export function ExtensionPanel({
             </div>
             <button
               className="icon-button"
+              aria-label="Remove extension"
               title="Remove extension"
               onClick={() => void api.extensions.remove(extension.id).then(refresh)}
             >

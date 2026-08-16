@@ -88,6 +88,7 @@ export function ShortcutsPanel({
               </div>
               <button
                 className="icon-button"
+                aria-label="Delete shortcut"
                 title="Delete shortcut"
                 onClick={() => void api.shortcuts.delete(shortcut.id).then(refresh)}
               >

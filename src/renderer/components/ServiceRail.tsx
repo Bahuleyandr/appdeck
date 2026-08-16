@@ -153,15 +153,17 @@ export function ServiceRail(): JSX.Element {
   if (collapsed) {
     return (
       <aside
+        aria-label="Services"
         className="flex h-full shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-2"
         style={{ width: COLLAPSED_WIDTH }}
       >
         <button
           className="icon-button h-8 w-8"
+          aria-label="Expand services"
           title="Expand services"
           onClick={() => setCollapsed(false)}
         >
-          <PanelLeftOpen size={16} />
+          <PanelLeftOpen size={16} aria-hidden="true" />
         </button>
         <div className="my-1 h-px w-6 bg-line" />
         <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
@@ -176,6 +178,8 @@ export function ServiceRail(): JSX.Element {
                 }`}
                 style={{ backgroundColor: service.color ?? '#475569' }}
                 disabled={service.disabled}
+                aria-label={service.display_name}
+                aria-current={selected ? 'true' : undefined}
                 title={service.display_name}
                 onClick={() => void selectService(service.id)}
               >
@@ -191,10 +195,11 @@ export function ServiceRail(): JSX.Element {
         </div>
         <button
           className="icon-button h-8 w-8"
+          aria-label="Add service"
           title="Add service"
           onClick={() => setCatalogOpen(true)}
         >
-          <Plus size={16} />
+          <Plus size={16} aria-hidden="true" />
         </button>
       </aside>
     );
@@ -204,6 +209,7 @@ export function ServiceRail(): JSX.Element {
 
   return (
     <aside
+      aria-label="Services"
       className="relative flex h-full shrink-0 flex-col border-r border-line bg-panel"
       style={{ width }}
     >
@@ -212,17 +218,19 @@ export function ServiceRail(): JSX.Element {
         <div className="flex items-center gap-1">
           <button
             className="icon-button h-7 w-7"
+            aria-label="Add service"
             title="Add service"
             onClick={() => setCatalogOpen(true)}
           >
-            <Plus size={16} />
+            <Plus size={16} aria-hidden="true" />
           </button>
           <button
             className="icon-button h-7 w-7"
+            aria-label="Collapse sidebar"
             title="Collapse sidebar"
             onClick={() => setCollapsed(true)}
           >
-            <PanelLeftClose size={16} />
+            <PanelLeftClose size={16} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -266,6 +274,7 @@ export function ServiceRail(): JSX.Element {
               {editing ? (
                 <input
                   className="field h-7 min-w-0 flex-1 px-2 py-0 text-sm"
+                  aria-label="Rename service"
                   autoFocus
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -279,6 +288,7 @@ export function ServiceRail(): JSX.Element {
                 <button
                   className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                   disabled={service.disabled}
+                  aria-current={selected ? 'true' : undefined}
                   title={service.disabled ? `${service.display_name} disabled` : service.display_name}
                   onClick={() => void selectService(service.id)}
                   onDoubleClick={() => startRename(service.id, service.display_name)}
@@ -310,20 +320,22 @@ export function ServiceRail(): JSX.Element {
                 </button>
               )}
               {!editing && (
-                <div className="flex shrink-0 items-center opacity-0 transition group-hover:opacity-100">
+                <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
                   <button
                     className="p-1 text-muted hover:text-ink"
+                    aria-label="Rename"
                     title="Rename"
                     onClick={() => startRename(service.id, service.display_name)}
                   >
-                    <Pencil size={13} />
+                    <Pencil size={13} aria-hidden="true" />
                   </button>
                   <button
                     className="p-1 text-muted hover:text-ink"
+                    aria-label="Remove service"
                     title="Remove service"
                     onClick={() => void deleteService(service.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14} aria-hidden="true" />
                   </button>
                 </div>
               )}
@@ -338,6 +350,8 @@ export function ServiceRail(): JSX.Element {
       />
       {menu && menuService && (
         <div
+          role="menu"
+          aria-label={`${menuService.display_name} actions`}
           className="fixed z-[90] w-44 overflow-hidden rounded-md border border-line bg-panel py-1 text-sm shadow-2xl"
           style={{ left: menu.x, top: menu.y }}
           onClick={(event) => event.stopPropagation()}
@@ -415,12 +429,15 @@ function MenuItem({
 }): JSX.Element {
   return (
     <button
+      role="menuitem"
       className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left hover:bg-elevated ${
         danger ? 'text-red-300' : 'text-ink/90'
       }`}
       onClick={onClick}
     >
-      <span className="flex w-4 justify-center text-muted">{icon}</span>
+      <span aria-hidden="true" className="flex w-4 justify-center text-muted">
+        {icon}
+      </span>
       {label}
     </button>
   );

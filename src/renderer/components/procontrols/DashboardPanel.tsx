@@ -102,6 +102,7 @@ export function DashboardPanel({
                 </button>
                 <button
                   className="icon-button"
+                  aria-label="Delete dashboard"
                   title="Delete dashboard"
                   onClick={() => void api.dashboards.delete(dashboard.id).then(refresh)}
                 >

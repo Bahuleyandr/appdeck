@@ -178,32 +178,32 @@ export function InboxPanel(): JSX.Element | null {
   };
 
   return (
-    <aside className="flex h-full w-96 shrink-0 flex-col border-l border-line bg-panel">
+    <aside aria-label="Inbox" className="flex h-full w-96 shrink-0 flex-col border-l border-line bg-panel">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-3">
         <div className="text-sm font-semibold">{archiveMode ? 'Archive' : 'Inbox'}</div>
         <div className="flex items-center gap-1">
           <button
             className={`icon-button ${archiveMode ? 'border-accent text-white' : ''}`}
-            title="Archive — everything, searchable"
+            aria-label="Archive" aria-pressed={archiveMode} title="Archive — everything, searchable"
             onClick={() => setArchiveMode((value) => !value)}
           >
             <Archive size={15} />
           </button>
           <button
             className={`icon-button ${unreadOnly ? 'border-accent text-white' : ''}`}
-            title="Unread only"
+            aria-label="Unread only" aria-pressed={unreadOnly} title="Unread only"
             onClick={() => setUnreadOnly((value) => !value)}
           >
             <Filter size={15} />
           </button>
           {aiConfigured && (
             <>
-              <button className="icon-button" title="AI brief" disabled={busy} onClick={() => void runBrief()}>
+              <button className="icon-button" aria-label="AI brief" title="AI brief" disabled={busy} onClick={() => void runBrief()}>
                 <Sparkles size={15} />
               </button>
               <button
                 className={`icon-button ${prioritized ? 'border-accent text-white' : ''}`}
-                title="Prioritize with AI"
+                aria-label="Prioritize with AI" aria-pressed={prioritized} title="Prioritize with AI"
                 disabled={busy}
                 onClick={() => void runPrioritize()}
               >
@@ -211,7 +211,7 @@ export function InboxPanel(): JSX.Element | null {
               </button>
               <button
                 className="icon-button"
-                title="Suggest services to mute"
+                aria-label="Suggest services to mute" title="Suggest services to mute"
                 disabled={busy}
                 onClick={() => void runSuggest()}
               >
@@ -219,19 +219,22 @@ export function InboxPanel(): JSX.Element | null {
               </button>
             </>
           )}
-          <button className="icon-button" title="Mark all read" onClick={() => void markAllNotificationsRead()}>
+          <button className="icon-button" aria-label="Mark all read" title="Mark all read" onClick={() => void markAllNotificationsRead()}>
             <CheckCheck size={15} />
           </button>
-          <button className="icon-button" title="Clear all" onClick={() => void clearNotifications()}>
+          <button className="icon-button" aria-label="Clear all" title="Clear all" onClick={() => void clearNotifications()}>
             <Trash2 size={15} />
           </button>
-          <button className="icon-button" title="Close" onClick={close}>
+          <button className="icon-button" aria-label="Close" title="Close" onClick={close}>
             <X size={15} />
           </button>
         </div>
       </header>
       {brief !== null && (
-        <div className="max-h-56 shrink-0 overflow-y-auto border-b border-line bg-shell p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink">
+        <div
+          aria-live="polite"
+          className="max-h-56 shrink-0 overflow-y-auto border-b border-line bg-shell p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink"
+        >
           {busy ? 'Thinking…' : brief}
         </div>
       )}
@@ -242,8 +245,12 @@ export function InboxPanel(): JSX.Element | null {
               <Sparkles size={12} className="text-accent" />
               {latestRun.title} · {new Date(latestRun.created_at).toLocaleString()}
             </span>
-            <button className="text-muted hover:text-ink" onClick={() => setRunDismissed(true)}>
-              <X size={13} />
+            <button
+              className="text-muted hover:text-ink"
+              aria-label="Dismiss"
+              onClick={() => setRunDismissed(true)}
+            >
+              <X size={13} aria-hidden="true" />
             </button>
           </div>
           <div className="max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed text-muted">
@@ -255,8 +262,12 @@ export function InboxPanel(): JSX.Element | null {
         <div className="shrink-0 border-b border-line bg-shell p-3 text-xs">
           <div className="mb-1.5 flex items-center justify-between font-semibold text-ink">
             <span>Suggested mutes</span>
-            <button className="text-muted hover:text-ink" onClick={() => setSuggestions(null)}>
-              <X size={13} />
+            <button
+              className="text-muted hover:text-ink"
+              aria-label="Dismiss suggestions"
+              onClick={() => setSuggestions(null)}
+            >
+              <X size={13} aria-hidden="true" />
             </button>
           </div>
           {suggestions.length === 0 ? (
@@ -287,9 +298,14 @@ export function InboxPanel(): JSX.Element | null {
         {archiveMode && (
           <div className="sticky top-0 z-10 border-b border-line bg-panel p-2">
             <div className="relative">
-              <Search size={13} className="pointer-events-none absolute left-2 top-2 text-muted" />
+              <Search
+                size={13}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2 top-2 text-muted"
+              />
               <input
                 className="field w-full py-1.5 pl-7 text-xs"
+                aria-label="Search every notification"
                 placeholder="Search every notification…"
                 autoFocus
                 value={archiveQuery}
@@ -356,11 +372,11 @@ export function InboxPanel(): JSX.Element | null {
                       : serviceName(notification.instance_id)}
                   </span>
                 </button>
-                <div className="flex shrink-0 flex-col gap-1 opacity-0 transition group-hover:opacity-100">
+                <div className="flex shrink-0 flex-col gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
                   {aiConfigured && (
                     <button
                       className="text-muted hover:text-white"
-                      title="Draft a reply with AI"
+                      aria-label="Draft a reply with AI" title="Draft a reply with AI"
                       onClick={() => void runReply(notification.id)}
                     >
                       <Reply size={13} />
@@ -368,7 +384,7 @@ export function InboxPanel(): JSX.Element | null {
                   )}
                   <button
                     className="text-muted hover:text-white"
-                    title="Snooze 1 hour"
+                    aria-label="Snooze 1 hour" title="Snooze 1 hour"
                     onClick={() =>
                       void api.notifications
                         .snooze(notification.id, Date.now() + 3_600_000)
@@ -380,7 +396,7 @@ export function InboxPanel(): JSX.Element | null {
                   {svc && (
                     <button
                       className={`hover:text-white ${svc.muted ? 'text-accent' : 'text-muted'}`}
-                      title={svc.muted ? 'Unmute service' : 'Mute service'}
+                      aria-label={svc.muted ? 'Unmute service' : 'Mute service'} title={svc.muted ? 'Unmute service' : 'Mute service'}
                       onClick={() => void updateService(svc.id, { muted: !svc.muted })}
                     >
                       <BellOff size={13} />
@@ -392,6 +408,7 @@ export function InboxPanel(): JSX.Element | null {
                 <div className="border-t border-line/60 bg-shell p-2">
                   <textarea
                     className="field h-24 w-full resize-none text-xs"
+                    aria-label="Reply draft"
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}
                   />

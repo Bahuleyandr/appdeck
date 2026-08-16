@@ -1,6 +1,6 @@
 import { Crown, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AiPrompt,
   AppMetrics,
@@ -87,6 +87,7 @@ export function ProControls(): JSX.Element | null {
     load
   } = useAppStore();
   const [panel, setPanel] = useState<Panel>('workspaces');
+  const dialogRef = useRef<HTMLElement | null>(null);
   const [extensions, setExtensions] = useState<ExtensionRecord[]>([]);
   const [metrics, setMetrics] = useState<AppMetrics | null>(null);
   const [repairStatus, setRepairStatus] = useState<RepairStatus | null>(null);
@@ -119,6 +120,12 @@ export function ProControls(): JSX.Element | null {
     if (!proControlsOpen) return;
     setPanel(proControlsPanel);
   }, [proControlsOpen, proControlsPanel]);
+
+  // Initial focus lands on the dialog itself so Escape closes it and Tab starts inside it.
+  useEffect(() => {
+    if (!proControlsOpen) return;
+    dialogRef.current?.focus();
+  }, [proControlsOpen]);
 
   useEffect(() => {
     if (!proControlsOpen) return;
@@ -185,10 +192,23 @@ export function ProControls(): JSX.Element | null {
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
-      <section className="flex h-[86vh] w-[1040px] max-w-[94vw] overflow-hidden rounded-md border border-line bg-panel shadow-2xl">
-        <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-shell">
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Control Center"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setProControlsOpen(false);
+        }}
+        className="flex h-[86vh] w-[1040px] max-w-[94vw] overflow-hidden rounded-md border border-line bg-panel shadow-2xl"
+      >
+        <aside
+          aria-label="Control Center sections"
+          className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-shell"
+        >
           <div className="flex h-12 items-center gap-2 border-b border-line px-3">
-            <Crown size={17} className="text-accent" />
+            <Crown size={17} aria-hidden="true" className="text-accent" />
             <span className="text-sm font-semibold">Control Center</span>
           </div>
           <NavButton panel={panel} id="workspaces" label="Workspaces" setPanel={setActivePanel} />
@@ -235,7 +255,7 @@ export function ProControls(): JSX.Element | null {
           <NavButton panel={panel} id="import" label="Import" setPanel={setActivePanel} />
           <NavButton panel={panel} id="diagnostics" label="Diagnostics" setPanel={setActivePanel} />
           <div className="mt-auto border-t border-line p-3 text-xs text-muted">
-            <ShieldCheck size={15} className="mb-2 text-accent" />
+            <ShieldCheck size={15} aria-hidden="true" className="mb-2 text-accent" />
             Free, local-first, unlimited.
           </div>
         </aside>
@@ -243,8 +263,13 @@ export function ProControls(): JSX.Element | null {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
             <div className="text-sm font-semibold">{titleFor(panel)}</div>
-            <button className="icon-button" title="Close" onClick={() => setProControlsOpen(false)}>
-              <X size={16} />
+            <button
+              className="icon-button"
+              aria-label="Close"
+              title="Close"
+              onClick={() => setProControlsOpen(false)}
+            >
+              <X size={16} aria-hidden="true" />
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -415,9 +440,10 @@ function NavButton({
           ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/50'
           : 'text-muted hover:bg-elevated/60 hover:text-ink'
       }`}
+      aria-current={panel === id ? 'true' : undefined}
       onClick={() => setPanel(id)}
     >
-      <SlidersHorizontal size={14} />
+      <SlidersHorizontal size={14} aria-hidden="true" />
       <span className="truncate">{label}</span>
     </button>
   );

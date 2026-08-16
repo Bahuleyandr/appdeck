@@ -176,6 +176,7 @@ export function LinkRulesPanel({
               </div>
               <button
                 className="icon-button"
+                aria-label="Delete rule"
                 title="Delete rule"
                 onClick={() => void api.linkRules.delete(rule.id).then(refresh)}
               >

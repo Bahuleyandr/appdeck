@@ -101,6 +101,7 @@ export function PeerSyncPanel({
           </button>
           <button
             className="icon-button"
+            aria-label="Delete"
             title="Delete"
             onClick={() => void api.peerSync.delete(peer.id).then(refresh)}
           >
