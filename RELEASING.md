@@ -21,10 +21,10 @@ npm version patch        # or minor / major
 GH_TOKEN=ghp_xxx npm run release
 ```
 
-`npm run release` runs `electron-builder --publish always`. With the current `releaseType: release`
-configuration, it publishes a GitHub Release immediately with the installer, blockmap, and
-`latest.yml` (the manifest `electron-updater` reads). Installed clients pick it up on their next
-launch.
+`npm run release` runs `electron-builder --publish always`. With the current `releaseType: draft`
+configuration, it uploads the installer, blockmap, and `latest.yml` (the manifest
+`electron-updater` reads) to a **draft** GitHub Release. Review the assets, then publish the
+release manually — installed clients only pick up the update once the draft is published.
 
 ## Notes
 
