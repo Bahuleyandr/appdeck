@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import type { RecipeCatalogItem, ServiceCategory } from '../../shared/types';

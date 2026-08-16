@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useAppStore } from '../state/appStore';

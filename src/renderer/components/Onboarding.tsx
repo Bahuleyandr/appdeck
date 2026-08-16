@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useState } from 'react';
 import { Check, Plus } from 'lucide-react';
 import type { MigrationPreview } from '../../shared/types';

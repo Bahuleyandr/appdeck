@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Briefcase, Home, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAppStore } from '../state/appStore';

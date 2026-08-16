@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AiProvider, AiStatus, AppMetrics, ExtensionRecord } from '../../shared/types';

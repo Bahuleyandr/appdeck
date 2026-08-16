@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Lock, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useAppStore } from '../state/appStore';

@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { ExternalLink, Moon, Plus, RefreshCw, X } from 'lucide-react';
 import type { ServiceInstance, ServiceTab } from '../../shared/types';
