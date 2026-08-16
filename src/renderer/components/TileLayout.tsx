@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { ExternalLink, Moon, Plus, RefreshCw, X } from 'lucide-react';
 import type { ServiceInstance, ServiceTab } from '../../shared/types';
@@ -186,19 +187,21 @@ export function TileLayout(): JSX.Element {
                       {serviceTabs.length > 1 && (
                         <button
                           className="text-muted hover:text-white"
+                          aria-label={`Close tab ${tab.title || service.display_name}`}
                           onClick={() => void closeTab(service.id, tab.id)}
                         >
-                          <X size={11} />
+                          <X size={11} aria-hidden="true" />
                         </button>
                       )}
                     </div>
                   ))}
                   <button
                     className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:text-white"
+                    aria-label="New tab"
                     title="New tab"
                     onClick={() => void newTab(service.id)}
                   >
-                    <Plus size={13} />
+                    <Plus size={13} aria-hidden="true" />
                   </button>
                 </div>
               )}

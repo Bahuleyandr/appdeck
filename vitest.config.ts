@@ -5,12 +5,34 @@ export default defineConfig({
   // which tsconfig esbuild happens to discover for files outside src/renderer.
   esbuild: { jsx: 'automatic' },
   test: {
-    // Main-process/repository tests run in node; renderer tests opt into jsdom with a
-    // `// @vitest-environment jsdom` docblock.
-    environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
     // Argon2id at MODERATE memory (256 MiB) is part of the product spec; several suites derive
     // keys concurrently, so the 5s default flakes under full-suite parallel load.
-    testTimeout: 20_000
+    testTimeout: 20_000,
+    // Two projects instead of a per-file docblock: main-process/repository tests (.test.ts)
+    // run in node, renderer component tests (.test.tsx) get jsdom + jest-dom matchers.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['tests/unit/**/*.test.ts']
+        }
+      },
+      {
+        extends: true,
+        test: {
+          name: 'renderer',
+          environment: 'jsdom',
+          // Pin the document origin: jsdom only exposes localStorage/sessionStorage for a
+          // non-opaque origin, and leaving it to the default made `localStorage` undefined in
+          // some shells (reproducibly under PowerShell, fine under git-bash) — which failed
+          // every test that touches persisted UI state.
+          environmentOptions: { jsdom: { url: 'http://localhost/' } },
+          include: ['tests/unit/**/*.test.tsx'],
+          setupFiles: ['tests/unit/setup.renderer.ts']
+        }
+      }
+    ]
   }
 });

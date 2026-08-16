@@ -431,6 +431,9 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     },
 
     'trust:status': () => buildTrustStatus(ctx.db, ctx.trackerBlocker.stats()),
+    // Explicit user action from the Trust panel; the updated snapshot lands in userData
+    // and is preferred over the bundled one on future launches.
+    'trust:updateBlocklist': () => ctx.trackerBlocker.updateFromLists(app.getPath('userData')),
     'performance:status': () => collectPerformanceStatus(ctx.db, ctx.viewManager),
 
     'automation:list': () => listAutomations(ctx.db),
@@ -808,8 +811,8 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       await ctx.cloudSyncService.login(input.serverUrl, input.email, input.password);
       ctx.sendDataChanged();
     },
-    'account:logout': () => {
-      ctx.cloudSyncService.logout();
+    'account:logout': async () => {
+      await ctx.cloudSyncService.logout();
       ctx.sendDataChanged();
     },
     'account:syncNow': async () => {

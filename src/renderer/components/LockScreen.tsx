@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Lock, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useAppStore } from '../state/appStore';
@@ -57,6 +58,9 @@ export function LockScreen(): JSX.Element | null {
   return (
     <div className="absolute inset-0 z-[80] flex items-center justify-center bg-shell/95 backdrop-blur">
       <form
+        role="dialog"
+        aria-modal="true"
+        aria-label={setupMode ? 'Create a passphrase' : 'AppDeck is locked'}
         className="flex w-80 flex-col gap-3 rounded-xl border border-line bg-panel p-6 shadow-2xl"
         onSubmit={(event) => void handleSubmit(event)}
       >
@@ -77,6 +81,7 @@ export function LockScreen(): JSX.Element | null {
           className="field w-full"
           autoFocus
           type="password"
+          aria-label={setupMode ? 'New passphrase' : 'Passphrase'}
           placeholder={setupMode ? 'New passphrase' : 'Passphrase'}
           value={passphrase}
           onChange={(event) => setPassphrase(event.target.value)}
@@ -85,12 +90,17 @@ export function LockScreen(): JSX.Element | null {
           <input
             className="field w-full"
             type="password"
+            aria-label="Confirm passphrase"
             placeholder="Confirm passphrase"
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
           />
         )}
-        {error ? <div className="text-xs text-red-300">{error}</div> : null}
+        {error ? (
+          <div role="status" aria-live="polite" className="text-xs text-red-300">
+            {error}
+          </div>
+        ) : null}
         <button
           className="app-button w-full"
           disabled={busy || !passphrase || (setupMode && !confirm)}

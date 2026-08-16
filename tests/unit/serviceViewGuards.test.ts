@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface FakeWebContents {
@@ -107,7 +108,10 @@ import {
   deleteFirewallRule,
   upsertFirewallRule
 } from '../../src/main/db/repositories/privacyFirewall.js';
-import { createServiceInstance, updateServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
+import {
+  createServiceInstance,
+  updateServiceInstance
+} from '../../src/main/db/repositories/serviceInstances.js';
 import { ensureDefaultTab } from '../../src/main/db/repositories/serviceTabs.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { RecipeLoader } from '../../src/main/recipes/loader.js';
@@ -305,9 +309,14 @@ describe('service view guards', () => {
     });
   });
 
-  it('enforces firewall rules and tracker blocking from one merged onBeforeRequest handler', () => {
+  it('enforces firewall rules and tracker blocking from one merged onBeforeRequest handler', async () => {
     const blocker = new TrackerBlocker();
     blocker.setEnabled(true);
+    // The real bundled EasyList+EasyPrivacy snapshot drives the decisions under test.
+    const loaded = await blocker.loadEngine([
+      join(process.cwd(), 'resources', 'adblock-engine.bin')
+    ]);
+    expect(loaded).toBe(true);
     const { context, viewId, manager } = setup({ locked: () => false, trackerBlocker: blocker });
 
     manager.setBounds([{ viewId, rect: RECT }], [viewId]);
@@ -316,15 +325,18 @@ describe('service view guards', () => {
     };
     expect(partition.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1);
     const handler = partition.webRequest.onBeforeRequest.mock.calls[0]?.[0] as (
-      details: { url: string; resourceType: string },
+      details: { url: string; resourceType: string; referrer?: string },
       callback: (response: { cancel?: boolean }) => void
     ) => void;
 
     const cancels = (url: string): boolean => {
       let cancelled = false;
-      handler({ url, resourceType: 'script' }, (response) => {
-        cancelled = Boolean(response.cancel);
-      });
+      handler(
+        { url, resourceType: 'script', referrer: 'https://web.whatsapp.com/' },
+        (response) => {
+          cancelled = Boolean(response.cancel);
+        }
+      );
       return cancelled;
     };
 
@@ -343,8 +355,32 @@ describe('service view guards', () => {
     deleteFirewallRule(context.db, rule.id);
     expect(cancels('https://blocked.example.com/app.js')).toBe(false);
 
+    // Firewall rules stay enforced even where the tracker engine would also match —
+    // and they win regardless of the tracker toggle.
+    const trackerRule = upsertFirewallRule(context.db, {
+      rule_type: 'domain',
+      pattern: 'google-analytics.com',
+      action: 'block'
+    });
     blocker.setEnabled(false);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
+    deleteFirewallRule(context.db, trackerRule.id);
+
+    // Disabled tracker blocking passes tracker URLs through.
     expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
+
+    // An explicit allow rule is the user overriding the blocklist for one service, so it must
+    // beat EasyList too — otherwise there is no way to un-break a service the lists catch.
+    blocker.setEnabled(true);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
+    const allowRule = upsertFirewallRule(context.db, {
+      rule_type: 'domain',
+      pattern: 'google-analytics.com',
+      action: 'allow'
+    });
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
+    deleteFirewallRule(context.db, allowRule.id);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
   });
 
   it('reports instance visibility from the last bounds sync', () => {

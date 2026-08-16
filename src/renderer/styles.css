@@ -1,6 +1,25 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/* Theme colors resolve through runtime CSS variables (see :root below) so the
+   light/dark palettes can swap without regenerating utilities. `inline` makes
+   utilities embed the rgb(var(...)) expression directly. */
+@theme inline {
+  --color-shell: rgb(var(--shell));
+  --color-panel: rgb(var(--panel));
+  --color-elevated: rgb(var(--elevated));
+  --color-line: rgb(var(--line));
+  --color-ink: rgb(var(--ink));
+  --color-muted: rgb(var(--muted));
+  --color-accent: rgb(var(--accent));
+}
+
+/* Tailwind v4 defaults buttons to cursor: default; keep the v3 pointer look. */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 :root {
   --shell: 15 17 21;
@@ -46,15 +65,15 @@ textarea {
 }
 
 .app-button {
-  @apply inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-line/70 bg-elevated/50 px-3 text-sm text-ink/90 transition-colors hover:border-line hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-line/70 bg-elevated/50 px-3 text-sm text-ink/90 transition-colors hover:border-line hover:bg-elevated hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .icon-button {
-  @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted transition-colors hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted transition-colors hover:bg-elevated hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .field {
-  @apply h-9 rounded-lg border border-line bg-shell px-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-accent/70 focus:ring-2 focus:ring-accent/30;
+  @apply h-9 rounded-lg border border-line bg-shell px-3 text-sm text-ink outline-hidden transition placeholder:text-muted focus:border-accent/70 focus:ring-2 focus:ring-accent/30;
 }
 
 .panel {

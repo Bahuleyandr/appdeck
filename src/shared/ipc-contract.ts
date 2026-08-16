@@ -288,6 +288,8 @@ export const ipcSchemas = {
   }),
 
   'trust:status': z.void(),
+  /** User-initiated blocklist refresh — the only time tracker lists are downloaded. */
+  'trust:updateBlocklist': z.void(),
   'performance:status': z.void(),
 
   'automation:list': z.void(),

@@ -539,7 +539,13 @@ export class ServiceViewManager {
         callback({ cancel: true });
         return;
       }
-      if (this.trackerBlocker?.shouldBlock(details.url)) {
+      // An explicit allow is the user overriding the blocklist for this service, so it wins over
+      // EasyList as well — without this there is no way to un-break a service the lists catch.
+      if ((script.matched || domain.matched) && (script.action === 'allow' || domain.action === 'allow')) {
+        callback({ cancel: false });
+        return;
+      }
+      if (this.trackerBlocker?.shouldBlock(details.url, details.resourceType, details.referrer)) {
         this.trackerBlocker.recordBlocked(details.url);
         callback({ cancel: true });
         return;

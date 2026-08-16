@@ -63,6 +63,8 @@ jobs:
         working-directory: server
       - run: npm run typecheck
         working-directory: server
+      - run: npm test
+        working-directory: server
 
   audit:
     runs-on: ubuntu-latest

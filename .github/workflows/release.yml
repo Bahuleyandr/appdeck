@@ -1,8 +1,9 @@
 name: Release
 
-# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build signed installers
-# for Windows, macOS, and Linux and upload them to a GitHub Release. The release is created as a
-# DRAFT (see electron-builder.yml publish.releaseType) so you review and publish it manually.
+# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build installers for
+# Windows, macOS, and Linux and upload them to a GitHub Release. Builds are signed only once
+# the signing secrets exist (see RELEASING.md); until then they are unsigned. The release is
+# created as a DRAFT (see electron-builder.yml publish.releaseType) for manual review.
 on:
   push:
     tags:
@@ -35,8 +36,54 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Optional code-signing secrets. electron-builder reads these automatically when set;
           # leave unset for unsigned builds. CSC_LINK = base64 of a .pfx (Win) or .p12 (mac).
+          # Missing secrets expand to empty strings, which electron-builder treats as absent
+          # (verified against 26.x: windowsSignToolManager skips on empty CSC_LINK and
+          # MacTargetHelper.getNotarizeOptions skips when the Apple vars are all falsy), so
+          # runs without secrets still produce unsigned artifacts.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # macOS notarization (needs all three, plus CSC_LINK holding a Developer ID
+          # Application .p12 so the build is signed first). Partially-set credentials fail
+          # the build loudly instead of silently shipping un-notarized artifacts.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Report signing status
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Signing status (${RUNNER_OS})"
+            case "$RUNNER_OS" in
+              Windows)
+                if [ -n "$HAS_CSC" ]; then
+                  echo "- Windows artifacts: **signed** (CSC_LINK provided)"
+                else
+                  echo "- Windows artifacts: **unsigned** (no CSC_LINK secret; SmartScreen will warn)"
+                fi
+                ;;
+              macOS)
+                if [ -n "$HAS_CSC" ]; then
+                  echo "- macOS artifacts: **signed** (CSC_LINK provided)"
+                else
+                  echo "- macOS artifacts: **unsigned** (no CSC_LINK secret; Gatekeeper will warn)"
+                fi
+                if [ -n "$HAS_APPLE_ID" ] && [ -n "$HAS_APPLE_PW" ] && [ -n "$HAS_APPLE_TEAM" ]; then
+                  echo "- Notarization: **attempted** (Apple credentials provided; check build log for result)"
+                else
+                  echo "- Notarization: **skipped** (APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID not all set)"
+                fi
+                ;;
+              *)
+                echo "- Linux artifacts are not code-signed; verify downloads against the SHA256SUMS file."
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          HAS_CSC: ${{ secrets.CSC_LINK }}
+          HAS_APPLE_ID: ${{ secrets.APPLE_ID }}
+          HAS_APPLE_PW: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          HAS_APPLE_TEAM: ${{ secrets.APPLE_TEAM_ID }}
       # Attach per-OS SHA-256 checksums so downloads are verifiable even while builds are
       # unsigned. Runs only for tag builds (the draft release exists then).
       - name: Attach checksums

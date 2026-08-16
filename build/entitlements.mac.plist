@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Required for Electron's V8 JIT under the hardened runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Required by older Electron memory allocators; harmless on current versions and
+         recommended by @electron/notarize's prerequisites. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Native modules: better-sqlite3 is unpacked from the asar and loaded at runtime.
+         electron-builder deep-signs unpacked binaries, but library validation stays disabled
+         to match electron-builder's default entitlements template and avoid .node load
+         failures (electron-userland/electron-builder#3940). -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- The following are App Sandbox entitlements and are inert while the app is not
+         sandboxed; declared so behavior is unchanged if the sandbox is adopted later:
+         outbound network (service webviews, sync, updater) and user-selected file access
+         (downloads, vault import/export). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+  </dict>
+</plist>

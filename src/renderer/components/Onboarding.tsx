@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useState } from 'react';
 import { Check, Plus } from 'lucide-react';
 import type { MigrationPreview } from '../../shared/types';
@@ -43,7 +44,12 @@ export function Onboarding(): JSX.Element | null {
 
   return (
     <div className="absolute inset-0 z-[70] flex items-center justify-center overflow-hidden bg-shell p-4">
-      <section className="flex max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-line bg-panel shadow-2xl">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Welcome to AppDeck"
+        className="flex max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-line bg-panel shadow-2xl"
+      >
         <div className="shrink-0 border-b border-line/60 px-6 py-5">
           <h1 className="text-lg font-semibold">Welcome to AppDeck</h1>
           <p className="mt-1 text-sm text-muted">
@@ -99,7 +105,8 @@ export function Onboarding(): JSX.Element | null {
                 ))}
               </div>
               <textarea
-                className="mt-3 h-32 w-full resize-none rounded-md border border-line bg-shell p-3 text-xs outline-none focus:border-accent"
+                className="mt-3 h-32 w-full resize-none rounded-md border border-line bg-shell p-3 text-xs outline-hidden focus:border-accent"
+                aria-label={`Paste your ${source} export here`}
                 placeholder={`Paste your ${source} export here`}
                 value={migrationData}
                 onChange={(event) => {
@@ -125,7 +132,11 @@ export function Onboarding(): JSX.Element | null {
                   </div>
                 </div>
               ) : null}
-              {message ? <div className="mt-3 text-sm text-muted">{message}</div> : null}
+              {message ? (
+                <div role="status" aria-live="polite" className="mt-3 text-sm text-muted">
+                  {message}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-5">

@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Briefcase, Home, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAppStore } from '../state/appStore';
@@ -23,7 +24,10 @@ export function WorkspaceRail(): JSX.Element {
   };
 
   return (
-    <aside className="flex h-full w-16 shrink-0 flex-col items-center gap-2 border-r border-line bg-shell px-2 py-3">
+    <aside
+      aria-label="Workspaces"
+      className="flex h-full w-16 shrink-0 flex-col items-center gap-2 border-r border-line bg-shell px-2 py-3"
+    >
       {workspaces.map((workspace) => {
         const selected = workspace.id === selectedWorkspaceId;
         return (
@@ -34,12 +38,19 @@ export function WorkspaceRail(): JSX.Element {
             onDragOver={(event) => event.preventDefault()}
             onDrop={() => dropOn(workspace.id)}
             className={`icon-button relative ${selected ? 'bg-elevated text-ink ring-1 ring-inset ring-accent/60' : ''} ${workspace.disabled ? 'opacity-40' : ''} ${dragId === workspace.id ? 'opacity-50' : ''}`}
+            aria-label={workspace.disabled ? `${workspace.name} disabled` : workspace.name}
+            aria-current={selected ? 'true' : undefined}
             title={workspace.disabled ? `${workspace.name} disabled` : workspace.name}
             disabled={workspace.disabled}
             onClick={() => void selectWorkspace(workspace.id)}
           >
-            {workspace.icon === 'home' ? <Home size={18} /> : <Briefcase size={18} />}
+            {workspace.icon === 'home' ? (
+              <Home size={18} aria-hidden="true" />
+            ) : (
+              <Briefcase size={18} aria-hidden="true" />
+            )}
             <span
+              aria-hidden="true"
               className="absolute bottom-1 right-1 h-2 w-2 rounded-full"
               style={{ backgroundColor: workspace.color ?? '#2dd4bf' }}
             />
@@ -48,10 +59,11 @@ export function WorkspaceRail(): JSX.Element {
       })}
       <button
         className="icon-button mt-auto"
+        aria-label="Manage workspaces"
         title="Manage workspaces"
         onClick={() => setProControlsOpen(true)}
       >
-        <Plus size={18} />
+        <Plus size={18} aria-hidden="true" />
       </button>
     </aside>
   );

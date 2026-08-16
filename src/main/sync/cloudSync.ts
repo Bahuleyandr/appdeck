@@ -14,6 +14,8 @@ import { mergeVaultPlaintext } from './merge.js';
 import { decryptVault, encryptVault, localVaultHash, vaultContentHash } from './vault.js';
 
 const CLOUD_DEBOUNCE_MS = 2000;
+/** Sign-out waits this long for server-side revocation before completing locally regardless. */
+const LOGOUT_TIMEOUT_MS = 3000;
 
 interface AuthParams {
   authSalt: string;
@@ -64,6 +66,7 @@ export class CloudSyncService {
       body: JSON.stringify({ email, authSalt, authHash, wrappedKey })
     });
     if (res.status === 409) throw new Error('That email is already registered.');
+    if (res.status === 429) throw new Error('Too many attempts — try again in a few minutes.');
     if (!res.ok) throw new Error(`Signup failed (${res.status})`);
     const { token } = (await res.json()) as { token: string };
     this.persistSession(url, email, token, rootKey);
@@ -74,6 +77,7 @@ export class CloudSyncService {
     const url = normalizeUrl(serverUrl);
     const paramsRes = await fetch(`${url}/api/auth-params?email=${encodeURIComponent(email)}`);
     if (paramsRes.status === 404) throw new Error('No account for that email.');
+    if (paramsRes.status === 429) throw new Error('Too many attempts — try again in a few minutes.');
     if (!paramsRes.ok) throw new Error(`Login failed (${paramsRes.status})`);
     const params = (await paramsRes.json()) as AuthParams;
     const authHash = await deriveAuthHash(password, params.authSalt);
@@ -83,6 +87,7 @@ export class CloudSyncService {
       body: JSON.stringify({ email, authHash })
     });
     if (loginRes.status === 401) throw new Error('Wrong email or password.');
+    if (loginRes.status === 429) throw new Error('Too many attempts — try again in a few minutes.');
     if (!loginRes.ok) throw new Error(`Login failed (${loginRes.status})`);
     const { token, wrappedKey } = (await loginRes.json()) as LoginResponse;
     const rootKey = await unwrapRootKey(JSON.parse(wrappedKey) as WrappedRootKey, password);
@@ -90,7 +95,24 @@ export class CloudSyncService {
     await this.syncNow();
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
+    // Revoke the session server-side before dropping the local copy of the token — once it is
+    // gone we can never retry, so a fire-and-forget request would silently leave the token live
+    // for its full 30-day TTL whenever the app quits right after sign-out. Bounded so that being
+    // offline (or on an older server) still signs you out promptly.
+    const url = getMeta(this.db, 'cloud_url');
+    const token = this.requireToken();
+    if (url && token) {
+      try {
+        await fetch(`${url}/api/logout`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(LOGOUT_TIMEOUT_MS)
+        });
+      } catch {
+        // Offline or unreachable: sign out locally anyway. The token still expires on its own.
+      }
+    }
     this.rootKey = null;
     this.token = null;
     setMeta(this.db, 'cloud_token_safe', '');

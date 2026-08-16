@@ -1,12 +1,5 @@
 export type ServiceCategory =
-  | 'Chat'
-  | 'Email'
-  | 'Social'
-  | 'Dev'
-  | 'AI'
-  | 'Productivity'
-  | 'Media'
-  | 'Other';
+  'Chat' | 'Email' | 'Social' | 'Dev' | 'AI' | 'Productivity' | 'Media' | 'Other';
 
 export interface UnreadCount {
   direct: number;
@@ -256,10 +249,20 @@ export interface DashboardSnapshot {
   generatedAt: number;
 }
 
+export interface BlocklistInfo {
+  /** False until the bundled EasyList+EasyPrivacy engine snapshot has been loaded. */
+  loaded: boolean;
+  /** When the loaded snapshot was generated from the lists (ms epoch), if known. */
+  generatedAt: number | null;
+  /** Names of the filter lists compiled into the snapshot (e.g. EasyList, EasyPrivacy). */
+  lists: string[];
+}
+
 export interface TrackerStats {
   enabled: boolean;
   blockedTotal: number;
   topHosts: Array<{ host: string; count: number }>;
+  blocklist: BlocklistInfo;
 }
 
 export interface TrustStatus {
@@ -281,11 +284,7 @@ export interface PerformanceStatus extends AppMetrics {
 }
 
 export type AutomationTriggerType =
-  | 'notification'
-  | 'unreadThreshold'
-  | 'schedule'
-  | 'startup'
-  | 'manual';
+  'notification' | 'unreadThreshold' | 'schedule' | 'startup' | 'manual';
 
 export interface AutomationTrigger {
   type: AutomationTriggerType;
@@ -561,12 +560,7 @@ export interface ResolvedRecipeForInstance {
 }
 
 export type SyncRecordType =
-  | 'workspace'
-  | 'profile'
-  | 'customRecipe'
-  | 'serviceInstance'
-  | 'workspaceService'
-  | 'layout';
+  'workspace' | 'profile' | 'customRecipe' | 'serviceInstance' | 'workspaceService' | 'layout';
 
 export interface SyncRecord {
   type: SyncRecordType;

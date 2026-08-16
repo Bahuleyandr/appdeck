@@ -66,6 +66,7 @@ export const invokeChannels = [
   'migration:preview',
   'migration:run',
   'trust:status',
+  'trust:updateBlocklist',
   'performance:status',
   'automation:list',
   'automation:upsert',

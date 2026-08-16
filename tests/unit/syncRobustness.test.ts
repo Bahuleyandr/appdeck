@@ -110,6 +110,37 @@ describe('cloud sync robustness', () => {
     await first;
   });
 
+  it('logout revokes the server session best-effort and always clears local state', async () => {
+    const { context, service } = await cloudService();
+    const calls: { url: string; method?: string; auth: string | null }[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        method: init?.method,
+        auth: new Headers(init?.headers).get('authorization')
+      });
+      // Server unreachable: the revoke call fails, but local sign-out must still complete.
+      return Promise.reject(new Error('offline'));
+    });
+
+    // Revocation is awaited (bounded) so the token cannot outlive a sign-out-then-quit, but an
+    // unreachable server must still sign the user out locally.
+    await service.logout();
+    expect(calls).toEqual([
+      { url: 'https://sync.test/api/logout', method: 'POST', auth: 'Bearer token-1' }
+    ]);
+    expect(getMeta(context.db, 'cloud_token_safe')).toBe('');
+    expect(service.status().configured).toBe(false);
+  });
+
+  it('logout without a configured session does not call the server', async () => {
+    const context = createTestDb();
+    const service = new CloudSyncService(context.db);
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch')));
+    await service.logout();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('records the last sync error in status and clears it on success', async () => {
     const { service } = await cloudService();
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('offline')));

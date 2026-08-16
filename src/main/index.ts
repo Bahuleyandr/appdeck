@@ -128,6 +128,15 @@ if (!gotLock) {
 
       const trackerBlocker = new TrackerBlocker();
       trackerBlocker.setEnabled(getBoolSetting(db, 'tracker_block'));
+      // Engine load is async and off the critical startup path (deserialize measures ~10ms,
+      // but the 3MB read stays out of first-paint). Requests pass through until it's ready.
+      // A user-updated snapshot in userData wins over the bundled one when it is newer.
+      const bundledEnginePath = app.isPackaged
+        ? join(process.resourcesPath, 'adblock-engine.bin')
+        : join(app.getAppPath(), 'resources', 'adblock-engine.bin');
+      void trackerBlocker
+        .loadEngine([join(app.getPath('userData'), 'adblock-engine.bin'), bundledEnginePath])
+        .catch(() => undefined);
       const extensionManager = new ExtensionManager(db);
 
       lockService = new AppLockService(db, () => {

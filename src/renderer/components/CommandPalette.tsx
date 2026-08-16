@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import {
   useEffect,
   useId,
@@ -116,13 +117,16 @@ export function CommandPalette(): JSX.Element | null {
       {/* Key handling lives on the container so Escape and the arrows keep working after focus
           moves off the input (tabbing, or clicking a result). */}
       <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="w-[620px] rounded-md border border-line bg-panel shadow-2xl"
         onKeyDown={handleKeyDown}
       >
         <div className="flex h-12 items-center gap-2 border-b border-line px-3">
-          <Search size={16} className="text-muted" />
+          <Search size={16} aria-hidden="true" className="text-muted" />
           <input
-            className="h-full flex-1 bg-transparent text-sm outline-none"
+            className="h-full flex-1 bg-transparent text-sm outline-hidden"
             autoFocus
             role="combobox"
             aria-expanded
@@ -132,8 +136,13 @@ export function CommandPalette(): JSX.Element | null {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button className="icon-button" title="Close" onClick={() => setCommandOpen(false)}>
-            <X size={16} />
+          <button
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            onClick={() => setCommandOpen(false)}
+          >
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
         <div id={listId} ref={listRef} role="listbox" className="max-h-96 overflow-y-auto p-2">

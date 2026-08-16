@@ -1,0 +1,17 @@
+{
+  "generatedAt": 1786853070540,
+  "engineVersion": 895,
+  "sizeBytes": 3200673,
+  "lists": [
+    {
+      "name": "EasyList",
+      "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssetsCDN/main/thirdparties/easylist.txt",
+      "lastModified": "Sat, 15 Aug 2026 21:56:03 +0000"
+    },
+    {
+      "name": "EasyPrivacy",
+      "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssetsCDN/main/thirdparties/easyprivacy.txt",
+      "lastModified": "Sat, 15 Aug 2026 15:56:32 +0000"
+    }
+  ]
+}

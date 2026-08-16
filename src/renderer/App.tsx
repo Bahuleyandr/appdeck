@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { lazy, Suspense, useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
 import { InboxPanel } from './components/InboxPanel';

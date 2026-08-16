@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import type { JSX } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import type { RecipeCatalogItem, ServiceCategory } from '../../shared/types';
 import { useAppStore } from '../state/appStore';
@@ -11,6 +12,13 @@ export function ServiceCatalog(): JSX.Element | null {
   const [customName, setCustomName] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [customCategory, setCustomCategory] = useState<ServiceCategory>('Other');
+  const dialogRef = useRef<HTMLElement | null>(null);
+
+  // Initial focus lands on the dialog itself so Escape closes it and Tab starts inside it.
+  useEffect(() => {
+    if (!catalogOpen) return;
+    dialogRef.current?.focus();
+  }, [catalogOpen]);
 
   const groups = useMemo(() => {
     const q = query.toLowerCase();
@@ -23,16 +31,31 @@ export function ServiceCatalog(): JSX.Element | null {
   if (!catalogOpen) return null;
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55">
-      <section className="flex h-[640px] w-[760px] max-w-[92vw] flex-col rounded-md border border-line bg-panel shadow-2xl">
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Service catalog"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setCatalogOpen(false);
+        }}
+        className="flex h-[640px] w-[760px] max-w-[92vw] flex-col rounded-md border border-line bg-panel shadow-2xl"
+      >
         <header className="flex h-12 items-center justify-between border-b border-line px-4">
           <div className="text-sm font-semibold">Catalog</div>
-          <button className="icon-button" title="Close" onClick={() => setCatalogOpen(false)}>
-            <X size={16} />
+          <button
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            onClick={() => setCatalogOpen(false)}
+          >
+            <X size={16} aria-hidden="true" />
           </button>
         </header>
         <div className="flex items-center gap-2 border-b border-line p-3">
-          <Search size={16} className="text-muted" />
-          <input className="field flex-1" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search services" />
+          <Search size={16} aria-hidden="true" className="text-muted" />
+          <input className="field flex-1" aria-label="Search services" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search services" />
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_280px]">
           <div className="min-h-0 overflow-y-auto p-3">
@@ -51,9 +74,9 @@ export function ServiceCatalog(): JSX.Element | null {
           <aside className="border-l border-line p-3">
             <div className="mb-3 text-sm font-semibold">Custom service</div>
             <div className="space-y-2">
-              <input className="field w-full" value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="Name" />
-              <input className="field w-full" value={customUrl} onChange={(event) => setCustomUrl(event.target.value)} placeholder="https://example.com" />
-              <select className="field w-full" value={customCategory} onChange={(event) => setCustomCategory(event.target.value as ServiceCategory)}>
+              <input className="field w-full" aria-label="Custom service name" value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="Name" />
+              <input className="field w-full" aria-label="Custom service URL" value={customUrl} onChange={(event) => setCustomUrl(event.target.value)} placeholder="https://example.com" />
+              <select className="field w-full" aria-label="Custom service category" value={customCategory} onChange={(event) => setCustomCategory(event.target.value as ServiceCategory)}>
                 {CATEGORY_ORDER.map((category) => (
                   <option key={category} value={category}>
                     {category}
