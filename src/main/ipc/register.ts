@@ -91,6 +91,7 @@ import {
   deleteFocusMode,
   focusModeStatus,
   listFocusModes,
+  setManualFocusMode,
   upsertFocusMode
 } from '../db/repositories/focusModes.js';
 import {
@@ -466,6 +467,12 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       ctx.sendDataChanged();
     },
     'focusMode:status': () => focusModeStatus(ctx.db),
+    'focusMode:activate': (payload) => {
+      const input = parseIpcPayload('focusMode:activate', payload);
+      setManualFocusMode(ctx.db, input.id);
+      ctx.sendDataChanged();
+      return focusModeStatus(ctx.db);
+    },
 
     'browserImport:preview': (payload) => {
       const input = parseIpcPayload('browserImport:preview', payload);

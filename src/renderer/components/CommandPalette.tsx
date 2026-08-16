@@ -1,4 +1,10 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent
+} from 'react';
 import { Search, X } from 'lucide-react';
 import type { PaletteItem } from '../../shared/types';
 import { api } from '../ipc/client';
@@ -22,6 +28,18 @@ export function CommandPalette(): JSX.Element | null {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<PaletteItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const listId = useId();
+  const optionId = (index: number): string => `${listId}-option-${index}`;
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // The list scrolls at ~9 rows; keep the keyboard selection inside the viewport so Enter can
+  // never activate a row the user cannot see.
+  useEffect(() => {
+    if (!commandOpen) return;
+    const active = listRef.current?.querySelector(`#${CSS.escape(optionId(selectedIndex))}`);
+    active?.scrollIntoView({ block: 'nearest' });
+  }, [commandOpen, selectedIndex, items]);
+
   useEffect(() => {
     if (!commandOpen) return;
     // Debounce + cancel so a slow older query can never overwrite a newer result set.
@@ -95,39 +113,56 @@ export function CommandPalette(): JSX.Element | null {
 
   return (
     <div className="absolute inset-0 z-50 flex items-start justify-center bg-black/45 pt-24">
-      <section className="w-[620px] rounded-md border border-line bg-panel shadow-2xl">
+      {/* Key handling lives on the container so Escape and the arrows keep working after focus
+          moves off the input (tabbing, or clicking a result). */}
+      <section
+        className="w-[620px] rounded-md border border-line bg-panel shadow-2xl"
+        onKeyDown={handleKeyDown}
+      >
         <div className="flex h-12 items-center gap-2 border-b border-line px-3">
           <Search size={16} className="text-muted" />
           <input
             className="h-full flex-1 bg-transparent text-sm outline-none"
             autoFocus
+            role="combobox"
+            aria-expanded
+            aria-controls={listId}
+            aria-activedescendant={items.length ? optionId(selectedIndex) : undefined}
+            aria-label="Search services, workspaces, notifications and commands"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleKeyDown}
           />
           <button className="icon-button" title="Close" onClick={() => setCommandOpen(false)}>
             <X size={16} />
           </button>
         </div>
-        <div className="max-h-96 overflow-y-auto p-2">
-          {items.map((item, index) => (
-            <button
-              key={`${item.type}-${item.id}`}
-              className={`flex h-10 w-full items-center justify-between rounded-md px-3 text-left text-sm hover:bg-shell ${
-                index === selectedIndex ? 'bg-shell' : ''
-              }`}
-              onMouseEnter={() => setSelectedIndex(index)}
-              onClick={() => activate(item)}
-            >
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate">{item.label}</span>
-                {item.sublabel && (
-                  <span className="truncate text-xs text-muted">{item.sublabel}</span>
-                )}
-              </span>
-              <span className="ml-2 shrink-0 text-xs text-muted">{item.type}</span>
-            </button>
-          ))}
+        <div id={listId} ref={listRef} role="listbox" className="max-h-96 overflow-y-auto p-2">
+          {items.map((item, index) => {
+            const selected = index === selectedIndex;
+            return (
+              <button
+                key={`${item.type}-${item.id}`}
+                id={optionId(index)}
+                role="option"
+                aria-selected={selected}
+                // Selection needs to read differently from a passing hover, so it keeps a ring
+                // rather than only the shared background tint.
+                className={`flex h-10 w-full items-center justify-between rounded-md px-3 text-left text-sm hover:bg-shell/60 ${
+                  selected ? 'bg-shell ring-1 ring-accent' : ''
+                }`}
+                onMouseEnter={() => setSelectedIndex(index)}
+                onClick={() => activate(item)}
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{item.label}</span>
+                  {item.sublabel && (
+                    <span className="truncate text-xs text-muted">{item.sublabel}</span>
+                  )}
+                </span>
+                <span className="ml-2 shrink-0 text-xs text-muted">{item.type}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>

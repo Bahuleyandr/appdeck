@@ -72,6 +72,10 @@ export function applyTheme(theme: string): void {
 // Monotonic guard for load(): a slow, older load resolving late must not clobber the state a
 // newer load (or a data-changed reload) already applied.
 let loadSequence = 0;
+// Separate guard for which workspace the user is looking at. A load() that started before an
+// explicit switch still carries fresh global data worth keeping, so it cannot simply be
+// discarded — but its *selection* is stale and must not drag the user back.
+let selectionSequence = 0;
 
 interface AppState {
   loading: boolean;
@@ -220,6 +224,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // and let the user retry instead. Every await sits inside the same try/catch so a phase-2
     // failure (services/layout) reaches the retry screen too.
     const sequence = ++loadSequence;
+    const selection = selectionSequence;
     try {
       const [
         workspaces,
@@ -265,17 +270,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       if (sequence !== loadSequence) return;
       applyTheme(settings.theme);
+      // A switch that landed mid-flight owns the selection; keep the rest of this load's data.
+      const stale = selection !== selectionSequence;
+      const current = get();
       set({
         loading: false,
         loadError: null,
         workspaces,
         profiles,
         recipes,
-        services,
+        services: stale ? current.services : services,
         tasks,
-        selectedWorkspaceId,
-        selectedServiceIds,
-        layoutMode,
+        selectedWorkspaceId: stale ? current.selectedWorkspaceId : selectedWorkspaceId,
+        selectedServiceIds: stale ? current.selectedServiceIds : selectedServiceIds,
+        layoutMode: stale ? current.layoutMode : layoutMode,
         locked: lockStatus.locked,
         lockConfigured: lockStatus.configured,
         syncStatus,
@@ -300,8 +308,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().workspaces.some((workspace) => workspace.id === workspaceId && workspace.disabled)) {
       return;
     }
+    // Claim the selection immediately so a load() already in flight (and any slower switch)
+    // knows its own selection is stale by the time it resolves.
+    const sequence = ++selectionSequence;
     const services = await api.services.list(workspaceId);
     const layout = await api.layout.get(workspaceId);
+    if (sequence !== selectionSequence) return;
     const selectedServiceIds = layout.selected_service_ids.filter((id) =>
       services.some((service) => service.id === id && !service.disabled)
     );
@@ -585,14 +597,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   requestViewsResync: () =>
     set((current) => ({ viewsResyncNonce: current.viewsResyncNonce + 1 })),
   activateFocusMode: async (focusModeId) => {
-    // Focus modes have no manual-activation IPC — enabling the mode is the strongest lever the
-    // renderer has; the schedule then decides when it is in force.
     const modes = await api.focusModes.list();
     const mode = modes.find((candidate) => candidate.id === focusModeId);
     if (!mode) return;
+    // A disabled mode is not eligible to be active, so enable it before forcing it on.
     if (!mode.enabled) {
       await api.focusModes.upsert({ ...mode, enabled: true });
     }
+    await api.focusModes.activate(focusModeId);
     if (mode.workspace_id) {
       await get().selectWorkspace(mode.workspace_id);
     }

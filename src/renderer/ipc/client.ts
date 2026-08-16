@@ -239,7 +239,8 @@ export const api = {
     upsert: (payload: Partial<FocusMode> & Pick<FocusMode, 'name'>) =>
       invoke<FocusMode>('focusMode:upsert', payload),
     delete: (id: string) => invoke<void>('focusMode:delete', { id }),
-    status: () => invoke<FocusModeStatus>('focusMode:status')
+    status: () => invoke<FocusModeStatus>('focusMode:status'),
+    activate: (id: string | null) => invoke<FocusModeStatus>('focusMode:activate', { id })
   },
   browserImport: {
     preview: (data: string) => invoke<BrowserImportPreview>('browserImport:preview', { data }),

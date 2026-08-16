@@ -2590,7 +2590,10 @@ function FocusModesPanel({
   return (
     <section className="space-y-3">
       <div className="grid gap-3 lg:grid-cols-3">
-        <Metric label="Active" value={status?.activeMode?.name ?? 'None'} />
+        <Metric
+          label={status?.manuallyActivated ? 'Active (switched on)' : 'Active (scheduled)'}
+          value={status?.activeMode?.name ?? 'None'}
+        />
         <Metric label="Next" value={status?.nextMode?.name ?? 'None'} />
         <Metric label="Managed Services" value={String(services.length)} />
       </div>
@@ -2639,13 +2642,30 @@ function FocusModesPanel({
                 {mode.settings.muteNotifications ? 'Muted' : 'Normal'}
               </div>
             </div>
-            <button
-              className="icon-button"
-              title="Delete"
-              onClick={() => void api.focusModes.delete(mode.id).then(refresh)}
-            >
-              <Trash2 size={14} />
-            </button>
+            <div className="flex items-start gap-1">
+              <button
+                className={`app-button ${status?.activeMode?.id === mode.id ? 'border-accent text-white' : ''}`}
+                title={
+                  status?.activeMode?.id === mode.id
+                    ? 'Stand this mode down'
+                    : 'Switch this mode on now, regardless of its schedule'
+                }
+                onClick={() =>
+                  void api.focusModes
+                    .activate(status?.activeMode?.id === mode.id ? null : mode.id)
+                    .then(refresh)
+                }
+              >
+                {status?.activeMode?.id === mode.id ? 'Stand down' : 'Activate now'}
+              </button>
+              <button
+                className="icon-button"
+                title="Delete"
+                onClick={() => void api.focusModes.delete(mode.id).then(refresh)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         );
       })}
