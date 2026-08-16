@@ -10,7 +10,8 @@ Messenger, Gmail, …) as isolated, sleepable, multi-account panes inside one El
   (throttled, notifications keep arriving, instant wake) or deep-sleep to free their memory
 - Unified **notification inbox** with a **searchable full-text archive** + cross-service ⌘K search
 - **Local-first, E2EE config sync** via an encrypted vault file — cookies/sessions never sync
-- Link routing, Chrome-extension support, tracker/ad blocking, migration wizard
+- Link routing, Chrome-extension support, tracker/ad blocking (bundled EasyList + EasyPrivacy
+  snapshot, offline, opt-in, with a manual "Update blocklist" refresh), migration wizard
 - Optional provider-neutral **BYO AI**: scheduled **morning briefing**, inbox triage, saved
   prompts, and task extraction
 - Per-service **memory accounting** (see what every service costs, and what sleep saves)
@@ -46,6 +47,13 @@ npm run dev
 npm run dist        # local installers (no publish)
 npm run release     # build + publish to GitHub Releases (needs GH_TOKEN)
 npm run release:check
+```
+
+Before a release, refresh the bundled adblock engine snapshot (EasyList + EasyPrivacy compiled
+to `resources/adblock-engine.bin` by `scripts/update-adblock-engine.mjs`):
+
+```sh
+npm run update:adblock
 ```
 
 Verify chain: `npm run typecheck && npm run lint && npm test && npm run build`. See

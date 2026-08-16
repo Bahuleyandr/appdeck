@@ -33,3 +33,18 @@ These hold by design and are enforced by a key-name denylist at vault-encryption
   device.
 - Each service runs in its own Chromium partition with `sandbox` and `contextIsolation` on and
   `nodeIntegration` off.
+
+## Tracker/ad blocking
+
+- The opt-in tracker blocker (`tracker_block` setting, default off) matches requests against a
+  **bundled EasyList + EasyPrivacy engine snapshot** (`resources/adblock-engine.bin`, built with
+  `@ghostery/adblocker`, request blocking only — no cosmetic filtering). The snapshot date and
+  list provenance are recorded in `resources/adblock-engine.meta.json`; regenerate both with
+  `npm run update:adblock` before a release.
+- **The app never downloads filter lists on its own.** Blocking works entirely offline from the
+  bundled snapshot. The only network fetch is the explicit **"Update blocklist"** button in the
+  Trust panel, which downloads EasyList/EasyPrivacy once, rebuilds the engine locally, and
+  stores it in the user-data directory (a newer stored snapshot is preferred over the bundled
+  one at startup).
+- Matching happens in the existing per-partition `onBeforeRequest` handler; the user's privacy
+  firewall rules are evaluated before the blocklist and take precedence.
