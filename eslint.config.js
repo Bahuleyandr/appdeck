@@ -11,9 +11,7 @@ export default tseslint.config(
       'server/**',
       '*.config.ts',
       '*.config.cjs',
-      'eslint.config.js',
-      'tailwind.config.cjs',
-      'postcss.config.cjs'
+      'eslint.config.js'
     ]
   },
   js.configs.recommended,
