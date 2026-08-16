@@ -22,15 +22,19 @@ test('the packaged application launches and reaches the shell', async () => {
     args: [`--user-data-dir=${userData}`]
   });
   try {
-    const window = await app.firstWindow();
-    await expect(window.getByText('Welcome to AppDeck')).toBeVisible({ timeout: 30_000 });
-    await window.getByRole('button', { name: 'Skip' }).click();
-    await expect(window.getByText('Services', { exact: true })).toBeVisible();
+    const page = await app.firstWindow();
+    await expect(page.getByText('Welcome to AppDeck')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Skip' }).click();
+    await expect(page.getByText('Services', { exact: true })).toBeVisible();
 
     // The bundled blocklist ships via extraResources; if that path is wrong in the packaged
     // layout the engine silently never loads, which is invisible from a source run.
-    const blocklistLoaded = await window.evaluate(async () => {
-      const trust = (await window.appdeck.invoke('trust:status')) as {
+    const blocklistLoaded = await page.evaluate(async () => {
+      // Inside evaluate this runs in the renderer, where the preload bridge lives on window.
+      const bridge = (globalThis as unknown as {
+        appdeck: { invoke: (channel: string) => Promise<unknown> };
+      }).appdeck;
+      const trust = (await bridge.invoke('trust:status')) as {
         tracker?: { blocklist?: { loaded?: boolean } };
       };
       return trust.tracker?.blocklist?.loaded ?? false;
