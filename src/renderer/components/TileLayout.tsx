@@ -26,7 +26,8 @@ export function TileLayout(): JSX.Element {
     inboxOpen,
     dashboardOpen,
     locked,
-    settings
+    settings,
+    viewsResyncNonce
   } = useAppStore();
   // Native WebContentsViews paint above the HTML layer. Full-screen modals must hide the panes
   // entirely; side panels (Inbox/Tasks) are flex columns that shrink the container instead, so the
@@ -116,9 +117,27 @@ export function TileLayout(): JSX.Element {
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      void api.views.setBounds({ entries: [], visibleIds: [] });
     };
-  }, [layoutMode, visibleServices, serviceStates, tabs, modalOpen, inboxOpen, taskPanelOpen]);
+  }, [
+    layoutMode,
+    visibleServices,
+    serviceStates,
+    tabs,
+    modalOpen,
+    inboxOpen,
+    taskPanelOpen,
+    viewsResyncNonce
+  ]);
+
+  // Hide all native views only when the layout unmounts. Doing this in the bounds effect's
+  // cleanup blanked every pane on each re-run (every tab/state/unread change) before the fresh
+  // bounds arrived, flashing the whole grid.
+  useEffect(
+    () => () => {
+      void api.views.setBounds({ entries: [], visibleIds: [] });
+    },
+    []
+  );
 
   if (!visibleServices.length) {
     return (

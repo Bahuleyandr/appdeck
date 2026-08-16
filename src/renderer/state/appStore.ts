@@ -69,6 +69,10 @@ export function applyTheme(theme: string): void {
   document.documentElement.classList.toggle('light', isLight);
 }
 
+// Monotonic guard for load(): a slow, older load resolving late must not clobber the state a
+// newer load (or a data-changed reload) already applied.
+let loadSequence = 0;
+
 interface AppState {
   loading: boolean;
   loadError: string | null;
@@ -176,6 +180,10 @@ interface AppState {
   applySettings: (settings: SettingsMap) => void;
   setSettingValue: (key: keyof SettingsMap, value: string) => Promise<void>;
   toggleDnd: () => Promise<void>;
+  /** Bumped when main asks for a bounds re-send; TileLayout re-syncs on every change. */
+  viewsResyncNonce: number;
+  requestViewsResync: () => void;
+  activateFocusMode: (focusModeId: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -209,10 +217,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   syncStatus: { configured: false },
   load: async () => {
     // A single rejected IPC call must never strand the UI on the startup splash — surface it
-    // and let the user retry instead.
-    let loaded;
+    // and let the user retry instead. Every await sits inside the same try/catch so a phase-2
+    // failure (services/layout) reaches the retry screen too.
+    const sequence = ++loadSequence;
     try {
-      loaded = await Promise.all([
+      const [
+        workspaces,
+        profiles,
+        recipes,
+        tasks,
+        lockStatus,
+        syncStatus,
+        settings,
+        unread,
+        aiStatus
+      ] = await Promise.all([
         api.workspaces.list(),
         api.profiles.list(),
         api.recipes.catalog(),
@@ -223,64 +242,54 @@ export const useAppStore = create<AppState>((set, get) => ({
         api.notifications.unreadCount(),
         api.ai.status()
       ]);
+      const activeWorkspaces = workspaces.filter((workspace) => !workspace.disabled);
+      const selectedWorkspaceId = activeWorkspaces.some(
+        (workspace) => workspace.id === get().selectedWorkspaceId
+      )
+        ? get().selectedWorkspaceId
+        : (activeWorkspaces[0]?.id ?? null);
+      let services: ServiceInstance[] = [];
+      let layoutMode: Layout['mode'] = 'single';
+      let selectedServiceIds: string[] = [];
+      if (selectedWorkspaceId) {
+        services = await api.services.list(selectedWorkspaceId);
+        const layout = await api.layout.get(selectedWorkspaceId);
+        layoutMode = layout.mode;
+        selectedServiceIds = layout.selected_service_ids.filter((id) =>
+          services.some((service) => service.id === id && !service.disabled)
+        );
+        if (!selectedServiceIds.length) {
+          const firstActive = services.find((service) => !service.disabled);
+          selectedServiceIds = firstActive ? [firstActive.id] : [];
+        }
+      }
+      if (sequence !== loadSequence) return;
+      applyTheme(settings.theme);
+      set({
+        loading: false,
+        loadError: null,
+        workspaces,
+        profiles,
+        recipes,
+        services,
+        tasks,
+        selectedWorkspaceId,
+        selectedServiceIds,
+        layoutMode,
+        locked: lockStatus.locked,
+        lockConfigured: lockStatus.configured,
+        syncStatus,
+        settings,
+        unreadNotifications: unread,
+        aiConfigured: aiStatus.configured
+      });
     } catch (error) {
+      if (sequence !== loadSequence) return;
       set({
         loading: false,
         loadError: error instanceof Error ? error.message : String(error)
       });
-      return;
     }
-    const [
-      workspaces,
-      profiles,
-      recipes,
-      tasks,
-      lockStatus,
-      syncStatus,
-      settings,
-      unread,
-      aiStatus
-    ] = loaded;
-    applyTheme(settings.theme);
-    const activeWorkspaces = workspaces.filter((workspace) => !workspace.disabled);
-    const selectedWorkspaceId = activeWorkspaces.some(
-      (workspace) => workspace.id === get().selectedWorkspaceId
-    )
-      ? get().selectedWorkspaceId
-      : (activeWorkspaces[0]?.id ?? null);
-    let services: ServiceInstance[] = [];
-    let layoutMode: Layout['mode'] = 'single';
-    let selectedServiceIds: string[] = [];
-    if (selectedWorkspaceId) {
-      services = await api.services.list(selectedWorkspaceId);
-      const layout = await api.layout.get(selectedWorkspaceId);
-      layoutMode = layout.mode;
-      selectedServiceIds = layout.selected_service_ids.filter((id) =>
-        services.some((service) => service.id === id && !service.disabled)
-      );
-      if (!selectedServiceIds.length) {
-        const firstActive = services.find((service) => !service.disabled);
-        selectedServiceIds = firstActive ? [firstActive.id] : [];
-      }
-    }
-    set({
-      loading: false,
-      loadError: null,
-      workspaces,
-      profiles,
-      recipes,
-      services,
-      tasks,
-      selectedWorkspaceId,
-      selectedServiceIds,
-      layoutMode,
-      locked: lockStatus.locked,
-      lockConfigured: lockStatus.configured,
-      syncStatus,
-      settings,
-      unreadNotifications: unread,
-      aiConfigured: aiStatus.configured
-    });
   },
   refreshServices: async () => {
     const workspaceId = get().selectedWorkspaceId;
@@ -571,8 +580,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       'global_dnd',
       get().settings.global_dnd === 'true' ? 'false' : 'true'
     );
+  },
+  viewsResyncNonce: 0,
+  requestViewsResync: () =>
+    set((current) => ({ viewsResyncNonce: current.viewsResyncNonce + 1 })),
+  activateFocusMode: async (focusModeId) => {
+    // Focus modes have no manual-activation IPC — enabling the mode is the strongest lever the
+    // renderer has; the schedule then decides when it is in force.
+    const modes = await api.focusModes.list();
+    const mode = modes.find((candidate) => candidate.id === focusModeId);
+    if (!mode) return;
+    if (!mode.enabled) {
+      await api.focusModes.upsert({ ...mode, enabled: true });
+    }
+    if (mode.workspace_id) {
+      await get().selectWorkspace(mode.workspace_id);
+    }
   }
 }));
+
+// With theme 'system', follow live OS theme changes instead of waiting for the next reload.
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (useAppStore.getState().settings.theme === 'system') applyTheme('system');
+  });
+}
 
 function recipeToCatalog(recipe: CustomRecipe): RecipeCatalogItem {
   return {
