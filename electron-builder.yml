@@ -22,6 +22,27 @@ win:
   target:
     - nsis
     - portable
+  # -- Windows code signing (optional; builds stay unsigned until a cert is configured) --
+  # Standard OV/EV certificate: nothing to configure here. Set the env vars
+  #   CSC_LINK          = base64 of the .pfx (or a file:/https: URL to it)
+  #   CSC_KEY_PASSWORD  = the .pfx password
+  # and electron-builder signs automatically (empty/unset values are skipped cleanly).
+  #
+  # Alternative A - explicit signtool configuration (same cert, config instead of env):
+  # signtoolOptions:
+  #   certificateFile: path/to/cert.pfx
+  #   certificatePassword: "" # prefer the CSC_KEY_PASSWORD env var over committing this
+  #   # or, for a cert in the Windows cert store (typical for EV/hardware tokens):
+  #   # certificateSubjectName: "AppDeck"
+  #   # signingHashAlgorithms: [sha256]
+  #
+  # Alternative B - Azure Trusted Signing (mutually exclusive with signtoolOptions).
+  # Requires AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET env vars in CI:
+  # azureSignOptions:
+  #   publisherName: "CN=..." # exactly as in the certificate profile
+  #   endpoint: https://eus.codesigning.azure.net
+  #   codeSigningAccountName: your-account
+  #   certificateProfileName: your-profile
 nsis:
   oneClick: false
   perMachine: false
@@ -30,6 +51,18 @@ nsis:
   uninstallerIcon: build/icon.ico
 mac:
   icon: build/icon.png
+  # Hardened runtime + entitlements are prerequisites for notarization. Harmless for
+  # unsigned builds: when no Developer ID identity is available electron-builder skips
+  # signing entirely (and notarization with it), so local/CI builds without certs work.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # electron-builder 26 notarizes only after a successful signing pass AND only when Apple
+  # credentials are present in the environment (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD +
+  # APPLE_TEAM_ID, or an APPLE_API_KEY trio, or an APPLE_KEYCHAIN_PROFILE). With none set
+  # it logs "skipped macOS notarization" and continues; only `notarize: false` disables it.
+  notarize: true
   target:
     # zip is required for electron-updater's MacUpdater; dmg is the user-facing installer.
     - zip

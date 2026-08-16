@@ -13,8 +13,11 @@ Only the latest release receives fixes. AppDeck is pre-1.0; there are no backpor
 ## Signing and update posture (honest status)
 
 - **Builds are currently unsigned.** Windows SmartScreen and macOS Gatekeeper will warn on first
-  run. Authenticode/notarization is planned and tracked in the project backlog; until then,
-  verify downloads against the `SHA256SUMS-<OS>.txt` files attached to each GitHub Release.
+  run. The signing/notarization pipeline is fully wired (hardened runtime, entitlements, and
+  notarization config in `electron-builder.yml`; secret plumbing in the release workflow) and
+  activates as soon as certificates are added — see "Signing and notarization" in
+  [RELEASING.md](RELEASING.md). Until then, verify downloads against the `SHA256SUMS-<OS>.txt`
+  files attached to each GitHub Release.
 - Auto-updates come from GitHub Releases via electron-updater. Releases are created as drafts
   and published manually after review.
 
