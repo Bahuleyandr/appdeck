@@ -3,7 +3,10 @@
   "version": "0.2.0",
   "description": "A personal-first desktop workspace app for isolated, sleepable web services.",
   "main": "out/main/index.js",
-  "author": "AppDeck",
+  "author": {
+    "name": "AppDeck",
+    "email": "Bahuleyandr@users.noreply.github.com"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=22.12.0"

@@ -68,6 +68,8 @@ mac:
     - dmg
 linux:
   icon: build/icon.png
+  # Debian packages require a maintainer with an email; it comes from package.json `author`.
+  category: Network
   target:
     - AppImage
     - deb
