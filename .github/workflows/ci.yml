@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -23,6 +28,26 @@ jobs:
       - run: npm run build
       - run: npx electron-builder --dir --publish never
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # test:e2e rebuilds better-sqlite3 for Electron's ABI, builds the app, and runs
+      # Playwright against the Electron binary (no browser download needed). Electron
+      # needs a display on Linux, hence xvfb-run.
+      - run: xvfb-run --auto-servernum -- npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
   server:
     runs-on: ubuntu-latest
     steps:
@@ -35,4 +60,24 @@ jobs:
       - run: npm ci
         working-directory: server
       - run: npm run typecheck
+        working-directory: server
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Blocking: high-severity advisories in runtime (shipped) dependencies.
+      - name: Audit runtime dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
+      # Non-blocking: full audit (including devDependencies) for visibility.
+      - name: Audit all dependencies (advisory)
+        run: npm audit
+        continue-on-error: true
+      # server/ has no runtime dependencies; note-only.
+      - name: Audit server dependencies (advisory)
+        run: npm audit --audit-level=high || true
         working-directory: server
