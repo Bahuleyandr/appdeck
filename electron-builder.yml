@@ -5,6 +5,14 @@ directories:
 files:
   - out/**
   - package.json
+# Bundled adblock engine snapshot (EasyList + EasyPrivacy, built by
+# scripts/update-adblock-engine.mjs). Loaded from process.resourcesPath at runtime.
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - adblock-engine.bin
+      - adblock-engine.meta.json
 asarUnpack:
   - node_modules/better-sqlite3/**
   - node_modules/bindings/**

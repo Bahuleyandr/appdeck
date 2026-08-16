@@ -11,7 +11,9 @@ export default tseslint.config(
       'server/**',
       '*.config.ts',
       '*.config.cjs',
-      'eslint.config.js'
+      'eslint.config.js',
+      // Plain-node maintenance scripts; not part of any tsconfig project.
+      'scripts/*.mjs'
     ]
   },
   js.configs.recommended,

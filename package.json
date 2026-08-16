@@ -23,10 +23,12 @@
     "release": "npm run build && npm run rebuild:electron && electron-builder --publish always -c.npmRebuild=false",
     "release:check": "powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1",
     "rebuild:node": "npm rebuild better-sqlite3",
+    "update:adblock": "node scripts/update-adblock-engine.mjs",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@ghostery/adblocker": "^2.18.2",
     "better-sqlite3": "12.11.1",
     "bip39": "3.1.0",
     "chokidar": "5.0.0",
