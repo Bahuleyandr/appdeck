@@ -70,7 +70,13 @@ export function TileLayout(): JSX.Element {
 
   useEffect(() => {
     const node = containerRef.current;
-    if (!node) return;
+    if (!node) {
+      // No pane container is rendered (empty workspace / last service removed). The container
+      // ref is absent, so there are no bounds to compute — but any view attached by a previous
+      // run would keep painting over the empty state, so clear them explicitly.
+      void api.views.setBounds({ entries: [], visibleIds: [] });
+      return;
+    }
     let frame = 0;
     const syncBounds = (): void => {
       cancelAnimationFrame(frame);

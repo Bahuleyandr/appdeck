@@ -92,12 +92,18 @@ export function createServiceInstance(
       'SELECT COALESCE(MAX(position), -1) + 1 AS position FROM workspace_services WHERE workspace_id = ?'
     )
     .get(input.workspaceId) as { position: number };
+  // A new service starts from its workspace's sleep defaults — that is what the workspace
+  // "default sleep-after-idle" control promises. Later per-service edits override it.
+  const workspaceRow = db
+    .prepare('SELECT sleep_defaults FROM workspaces WHERE id = ?')
+    .get(input.workspaceId) as { sleep_defaults: string } | undefined;
+  const sleepPolicy = stringifyJson(parseJson<SleepPolicy>(workspaceRow?.sleep_defaults ?? '{}', {}));
   db.transaction(() => {
     db.prepare(
       `INSERT INTO service_instances
         (id, recipe_id, profile_id, display_name, partition_key, color, icon_path, pinned, muted, disabled, sleep_policy,
          custom_css, custom_js, proxy, user_agent, last_url, zoom_factor, spellcheck, updated_at, deleted_at, rev, origin_device)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, 0, '{}', NULL, NULL, NULL, NULL, NULL, NULL, 1, ?, NULL, 1, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, ?, NULL, 1, ?)`
     ).run(
       id,
       input.recipeId,
@@ -105,6 +111,7 @@ export function createServiceInstance(
       input.displayName,
       partitionKey,
       input.color ?? null,
+      sleepPolicy,
       now,
       deviceId
     );

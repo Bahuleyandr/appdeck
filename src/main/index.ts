@@ -47,10 +47,34 @@ let notificationService: NotificationService | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let notificationPruneTimer: NodeJS.Timeout | null = null;
+/** Deep link that arrived before LinkRouter was constructed; flushed by flushPendingDeepLink. */
+let pendingDeepLink: string | null = null;
 
 const NOTIFICATION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
-process.on('uncaughtException', (error) => logError('uncaughtException', error));
+function routeDeepLink(url: string): void {
+  if (linkRouter) {
+    linkRouter.route(url);
+    return;
+  }
+  pendingDeepLink = url;
+}
+
+function flushPendingDeepLink(argv: string[]): void {
+  const url = pendingDeepLink ?? argv.find((arg) => arg.startsWith(`${APP_PROTOCOL}://`)) ?? null;
+  pendingDeepLink = null;
+  if (url) {
+    linkRouter?.route(url);
+  }
+}
+
+// Log first, then fall back to the platform default. Swallowing an uncaught exception would
+// leave the main process running on half-applied state; a stray rejection is not worth killing
+// the whole workspace over.
+process.on('uncaughtException', (error) => {
+  logError('uncaughtException', error);
+  app.exit(1);
+});
 process.on('unhandledRejection', (reason) => logError('unhandledRejection', reason));
 
 app.setAsDefaultProtocolClient(APP_PROTOCOL);
@@ -66,7 +90,7 @@ if (!gotLock) {
   app.on('second-instance', (_event, argv) => {
     const deepLink = argv.find((arg) => arg.startsWith(`${APP_PROTOCOL}://`));
     if (deepLink) {
-      linkRouter?.route(deepLink);
+      routeDeepLink(deepLink);
     }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -75,9 +99,11 @@ if (!gotLock) {
     }
   });
 
+  // A cold launch by deep link fires open-url (macOS) or carries the URL in argv (Windows/Linux)
+  // long before linkRouter exists, so buffer it and flush once routing is up.
   app.on('open-url', (event, url) => {
     event.preventDefault();
-    linkRouter?.route(url);
+    routeDeepLink(url);
   });
 
   void app
@@ -147,6 +173,9 @@ if (!gotLock) {
       const updaterService = new UpdaterService(sendPush);
       updaterService.init();
       linkRouter = new LinkRouter(db, recipeLoader, viewManager, sendPush);
+      // A URL that launched the app (argv on Windows/Linux, buffered open-url on macOS) is only
+      // routable now that LinkRouter exists.
+      flushPendingDeepLink(process.argv);
       peerSyncRuntime = new PeerSyncRuntime(db);
       // Serving exposes a listening socket on the LAN/tailnet, so it's opt-in (default off). Pulling
       // from peers is an outbound fetch and needs no local server. The share server requires a bearer
@@ -241,7 +270,9 @@ if (!gotLock) {
           viewManager?.hideAll();
           viewManager?.clearActive();
         });
-        window.on('blur', () => viewManager?.clearActive());
+        // Deliberately NOT cleared on blur: alt-tabbing away leaves the pane on screen, and
+        // dropping the active id would strip the isFocused guard that keeps SleepManager from
+        // tearing down a visible pane. Only hiding to the tray parks views.
         // Ask the renderer to re-send bounds so parked views re-attach. If the renderer never
         // responds, nothing breaks — views stay parked until the next natural bounds sync.
         window.on('show', () => sendPush('event:views-resync-requested'));

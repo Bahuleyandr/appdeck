@@ -385,6 +385,11 @@ export class ServiceViewManager {
         continue;
       }
       const instance = getServiceInstance(this.db, managed.instanceId);
+      // An explicit `idleMinutes: null` means never sleep. The memory sweep must honour it too —
+      // otherwise hiding to the tray would park a pane the user asked to keep alive.
+      if (instance && instance.sleep_policy.idleMinutes === null) {
+        continue;
+      }
       if (instance && sleepTier(instance) === 'doze') {
         dozedInstances.add(managed.instanceId);
         continue;

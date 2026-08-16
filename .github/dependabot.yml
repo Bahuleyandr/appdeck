@@ -4,13 +4,46 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    # One PR per bucket instead of one per package — this repo has ~40 direct deps.
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      prod-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # An Electron major changes the Node ABI, which breaks the better-sqlite3 native module
+      # until it is rebuilt. Take those deliberately, with the rebuild dance, not from a bot PR.
+      - dependency-name: electron
+        update-types:
+          - version-update:semver-major
+      # better-sqlite3 majors are the other half of that ABI pairing.
+      - dependency-name: better-sqlite3
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: npm
     directory: /server
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      server-minor-patch:
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch

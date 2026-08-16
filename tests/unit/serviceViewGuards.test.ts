@@ -355,4 +355,36 @@ describe('service view guards', () => {
     manager.setBounds([], []);
     expect(manager.isInstanceVisible(service.id)).toBe(false);
   });
+
+  it('never trims a service the user marked never-sleep, even parked in the tray', () => {
+    const { context, service, viewId, manager } = setup({ locked: () => false });
+    // Explicit never-sleep, and muted so the tier would otherwise be deep (destroy).
+    updateServiceInstance(context.db, context.deviceId, service.id, {
+      muted: true,
+      sleep_policy: { idleMinutes: null }
+    });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const view = electronMock.state.createdViews[0];
+    if (!view) throw new Error('Expected a created view');
+
+    // Window hidden to the tray: every view is detached, then the trim sweep runs well past
+    // the hidden-view window.
+    manager.hideAll();
+    const trimmed = manager.trimHiddenViews(0, Date.now() + 60 * 60_000);
+
+    expect(trimmed).toBe(0);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(manager.isDozing(service.id)).toBe(false);
+  });
+
+  it('still trims an ordinary hidden service', () => {
+    const { service, viewId, manager } = setup({ locked: () => false });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    manager.hideAll();
+
+    manager.trimHiddenViews(0, Date.now() + 60 * 60_000);
+
+    // Default policy + unmuted => doze tier (renderer kept alive, notifications flowing).
+    expect(manager.isDozing(service.id)).toBe(true);
+  });
 });

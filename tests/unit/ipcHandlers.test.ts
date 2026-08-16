@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 import type { IpcContext } from '../../src/main/ipc/register.js';
 import { registerIpcHandlers } from '../../src/main/ipc/register.js';
 import { createServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
+import { RecipeLoader } from '../../src/main/recipes/loader.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import type { Workspace } from '../../src/shared/types.js';
 import { createTestDb } from './helpers.js';
@@ -45,7 +47,8 @@ function setup(): {
   const ctx = {
     db,
     deviceId,
-    viewManager: { setBounds: vi.fn(), focus: vi.fn(), reload: vi.fn() },
+    recipeLoader: new RecipeLoader(db),
+    viewManager: { setBounds: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoom: vi.fn() },
     sendPush: vi.fn(),
     sendDataChanged: vi.fn(),
     onSettingsChanged: vi.fn()
@@ -128,7 +131,7 @@ describe('ipc handlers', () => {
     expect(setBounds).not.toHaveBeenCalled();
   });
 
-  it('service:setZoom rejects non-positive zoom factors', async () => {
+  it('service:setZoom rejects non-positive zoom factors but accepts valid ones', async () => {
     const { handlers, ctx, workspace } = setup();
     const service = createServiceInstance(ctx.db, ctx.deviceId, {
       recipeId: 'whatsapp',
@@ -136,8 +139,51 @@ describe('ipc handlers', () => {
       displayName: 'WhatsApp'
     });
     const handler = getHandler(handlers, 'service:setZoom');
+    const setZoom = (ctx.viewManager as unknown as { setZoom: ReturnType<typeof vi.fn> }).setZoom;
 
-    await expect(handler(null, { id: service.id, zoomFactor: 0 })).rejects.toThrow();
-    await expect(handler(null, { id: service.id, zoomFactor: -1 })).rejects.toThrow();
+    await expect(handler(null, { id: service.id, zoomFactor: 0 })).rejects.toThrow(ZodError);
+    await expect(handler(null, { id: service.id, zoomFactor: -1 })).rejects.toThrow(ZodError);
+    expect(setZoom).not.toHaveBeenCalled();
+
+    // Positive control: without this the rejections above would also pass if the handler were
+    // simply broken (e.g. a missing viewManager method throwing TypeError on every payload).
+    await handler(null, { id: service.id, zoomFactor: 1.25 });
+    expect(setZoom).toHaveBeenCalledWith(service.id, 1.25);
+  });
+
+  it('rejects non-http(s) URLs at the navigation boundary', async () => {
+    const { handlers, ctx, workspace } = setup();
+    const service = createServiceInstance(ctx.db, ctx.deviceId, {
+      recipeId: 'whatsapp',
+      workspaceId: workspace.id,
+      displayName: 'WhatsApp'
+    });
+    const tabCreate = getHandler(handlers, 'tab:create');
+    const serviceUpdate = getHandler(handlers, 'service:update');
+
+    for (const url of [
+      'javascript:alert(1)',
+      'file:///etc/passwd',
+      'data:text/html,<h1>x</h1>',
+      'not-a-url'
+    ]) {
+      await expect(tabCreate(null, { instanceId: service.id, url })).rejects.toThrow(ZodError);
+      await expect(
+        serviceUpdate(null, { id: service.id, patch: { last_url: url } })
+      ).rejects.toThrow(ZodError);
+    }
+
+    // https still works, so the guard is a scheme check and not a blanket rejection.
+    await expect(
+      tabCreate(null, { instanceId: service.id, url: 'https://web.whatsapp.com/' })
+    ).resolves.toBeTruthy();
+  });
+
+  it('settings:set only accepts known setting keys', async () => {
+    const { handlers } = setup();
+    const handler = getHandler(handlers, 'settings:set');
+
+    await expect(handler(null, { key: 'not_a_setting', value: 'x' })).rejects.toThrow(ZodError);
+    await expect(handler(null, { key: 'theme', value: 'dark' })).resolves.toBeUndefined();
   });
 });

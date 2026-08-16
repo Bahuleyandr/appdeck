@@ -7,7 +7,9 @@ on:
 # Cancel superseded runs on the same ref to save runner minutes.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded branch/PR runs are cancelled, but never a run on main: two quick merges would
+  # otherwise leave main sitting at "cancelled" with no build artifact instead of green.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -73,11 +75,11 @@ jobs:
       # Blocking: high-severity advisories in runtime (shipped) dependencies.
       - name: Audit runtime dependencies (blocking)
         run: npm audit --omit=dev --audit-level=high
-      # Non-blocking: full audit (including devDependencies) for visibility.
+      # Advisory only. `|| true` rather than continue-on-error: the latter still stamps a red X
+      # on an otherwise-green job, which trains everyone to ignore the run.
       - name: Audit all dependencies (advisory)
-        run: npm audit
-        continue-on-error: true
-      # server/ has no runtime dependencies; note-only.
+        run: npm audit || true
+      # server/ ships no runtime dependencies (devDependencies only), so this is note-only.
       - name: Audit server dependencies (advisory)
         run: npm audit --audit-level=high || true
         working-directory: server

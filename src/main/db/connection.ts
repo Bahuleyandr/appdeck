@@ -32,6 +32,9 @@ export function backupBeforeMigration(db: Database.Database, dbPath: string): vo
     return;
   }
   try {
+    // The DB runs in WAL mode, so committed pages can still be sitting in appdeck.sqlite-wal.
+    // Fold them into the main file first or the "safety net" copy silently omits recent data.
+    db.pragma('wal_checkpoint(TRUNCATE)');
     copyFileSync(dbPath, `${dbPath}.bak-v${version}`);
   } catch (error) {
     logError('db-backup', error);

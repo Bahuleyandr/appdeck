@@ -2,8 +2,13 @@ import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import initSql from '../../src/main/db/migrations/0001_init.sql?raw';
 import { LATEST_SCHEMA_VERSION, getSchemaVersion, migrate } from '../../src/main/db/migrate.js';
-import { listServiceInstances } from '../../src/main/db/repositories/serviceInstances.js';
+import { getMeta } from '../../src/main/db/repositories/meta.js';
+import {
+  createServiceInstance,
+  listServiceInstances
+} from '../../src/main/db/repositories/serviceInstances.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
+import { isCustomCodeApproved } from '../../src/main/services/customCode.js';
 
 /** Build a database frozen at schema version 1, as a real v0.0.x install would have. */
 function createV1Db(): Database.Database {
@@ -67,6 +72,44 @@ describe('migration upgrade from schema v1', () => {
     expect(service?.recipe_id).toBe('whatsapp');
     expect(service?.display_name).toBe('WhatsApp');
     expect(service?.custom_js).toBe('// legacy js');
+  });
+
+  it('grandfathers custom code that predates the approval gate', () => {
+    const db = createV1Db();
+    const { serviceId } = seedV1Rows(db);
+
+    migrate(db);
+
+    // This path only runs on upgrade: code that was already executing before the provenance
+    // gate shipped must keep working rather than silently going inert.
+    const service = listServiceInstances(db).find((candidate) => candidate.id === serviceId);
+    if (!service) throw new Error('Expected the legacy service to survive');
+    expect(isCustomCodeApproved(db, service)).toBe(true);
+    expect(getMeta(db, 'custom_code_grandfathered')).toBe('1');
+  });
+
+  it('does not grandfather custom code that appears after the upgrade', () => {
+    const db = createV1Db();
+    seedV1Rows(db);
+    migrate(db);
+
+    // A later arrival (e.g. via sync) must still require explicit local approval.
+    const workspace = listWorkspaces(db)[0];
+    if (!workspace) throw new Error('Expected a workspace');
+    const deviceId = getMeta(db, 'device_id') ?? 'dev';
+    const fresh = createServiceInstance(db, deviceId, {
+      recipeId: 'whatsapp',
+      workspaceId: workspace.id,
+      displayName: 'Synced later'
+    });
+    db.prepare('UPDATE service_instances SET custom_js = ? WHERE id = ?').run(
+      'document.title = "owned"',
+      fresh.id
+    );
+    const synced = listServiceInstances(db).find((candidate) => candidate.id === fresh.id);
+    if (!synced) throw new Error('Expected the new service');
+
+    expect(isCustomCodeApproved(db, synced)).toBe(false);
   });
 
   it('does not inject a default workspace into an existing database', () => {
