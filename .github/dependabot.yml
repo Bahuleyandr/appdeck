@@ -18,13 +18,12 @@ updates:
           - minor
           - patch
     ignore:
-      # An Electron major changes the Node ABI, which breaks the better-sqlite3 native module
-      # until it is rebuilt. Take those deliberately, with the rebuild dance, not from a bot PR.
-      - dependency-name: electron
-        update-types:
-          - version-update:semver-major
-      # better-sqlite3 majors are the other half of that ABI pairing.
-      - dependency-name: better-sqlite3
+      # Majors here are never drive-by work, so dependabot proposes minor/patch only and majors
+      # get taken deliberately. Demonstrated by the first batch it opened: Vite 8 violates
+      # electron-vite's peer range, Tailwind 4 is a rewrite (CSS-first config), react-dom 19 was
+      # offered without React itself, and an Electron major breaks the better-sqlite3 ABI until
+      # it is rebuilt. All four are real upgrades with migration work, not bumps.
+      - dependency-name: '*'
         update-types:
           - version-update:semver-major
   - package-ecosystem: npm
@@ -37,6 +36,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:
