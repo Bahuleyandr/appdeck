@@ -26,7 +26,7 @@
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.116.0",
+    "@anthropic-ai/sdk": "^0.117.1",
     "better-sqlite3": "12.11.1",
     "bip39": "3.1.0",
     "chokidar": "5.0.0",
