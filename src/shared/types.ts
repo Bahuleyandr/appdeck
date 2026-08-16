@@ -432,9 +432,12 @@ export interface PersonalAnalytics {
 }
 
 export interface PortableModeStatus {
-  enabled: boolean;
-  rootPath: string | null;
-  recommendedPaths: string[];
+  active: boolean;
+  /** Where user data actually lives right now (portable root, or the OS userData path). */
+  dataDirectory: string;
+  /** Marker file that switches portable mode on. */
+  markerPath: string;
+  envVar: string;
   notes: string[];
 }
 

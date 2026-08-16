@@ -95,7 +95,6 @@ export const invokeChannels = [
   'repair:status',
   'repair:run',
   'portable:status',
-  'portable:configure',
   'peerSync:status',
   'peerSync:upsert',
   'peerSync:sync',

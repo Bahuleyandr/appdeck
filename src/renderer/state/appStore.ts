@@ -9,6 +9,7 @@ import type {
   ServiceInstance,
   ServiceState,
   ServiceTab,
+  FocusModeStatus,
   Task,
   UnreadCount,
   Workspace
@@ -105,6 +106,8 @@ interface AppState {
   tabs: Record<string, ServiceTab[]>;
   settings: SettingsMap;
   aiConfigured: boolean;
+  /** Active focus mode, so the UI can honour settings like hideMutedServices. */
+  focusStatus: FocusModeStatus | null;
   syncStatus: {
     configured: boolean;
     folderPath?: string;
@@ -218,6 +221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   tabs: {},
   settings: DEFAULT_SETTINGS,
   aiConfigured: false,
+  focusStatus: null,
   syncStatus: { configured: false },
   load: async () => {
     // A single rejected IPC call must never strand the UI on the startup splash — surface it
@@ -235,7 +239,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         syncStatus,
         settings,
         unread,
-        aiStatus
+        aiStatus,
+        focus
       ] = await Promise.all([
         api.workspaces.list(),
         api.profiles.list(),
@@ -245,7 +250,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         api.sync.status(),
         api.settings.get(),
         api.notifications.unreadCount(),
-        api.ai.status()
+        api.ai.status(),
+        api.focusModes.status()
       ]);
       const activeWorkspaces = workspaces.filter((workspace) => !workspace.disabled);
       const selectedWorkspaceId = activeWorkspaces.some(
@@ -289,7 +295,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         syncStatus,
         settings,
         unreadNotifications: unread,
-        aiConfigured: aiStatus.configured
+        aiConfigured: aiStatus.configured,
+        focusStatus: focus
       });
     } catch (error) {
       if (sequence !== loadSequence) return;

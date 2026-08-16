@@ -350,6 +350,22 @@ describe('rate limiting', () => {
     expect(limited.status).toBe(429);
   });
 
+  it('refuses to serve when TOKEN_SECRET is unset instead of signing with "undefined"', async () => {
+    // A deploy that forgets `wrangler secret put TOKEN_SECRET` would otherwise HMAC every token
+    // and decoy salt with the literal string "undefined" — forgeable by anyone reading the repo.
+    const { TOKEN_SECRET: _omitted, ...withoutSecret } = env;
+    const misconfigured = withoutSecret as unknown as Env;
+
+    const signup = await post('/api/signup', { email: freshEmail(), authSalt: 'a', authHash: 'b', wrappedKey: 'c' }, { env: misconfigured });
+    expect(signup.status).toBe(500);
+    expect(await signup.json()).toEqual({ error: 'server_misconfigured' });
+
+    const params = await dispatch(`/api/auth-params?email=${encodeURIComponent(freshEmail())}`, {}, {
+      env: misconfigured
+    });
+    expect(params.status).toBe(500);
+  });
+
   it('does not put header-less callers into one shared bucket', async () => {
     // wrangler dev, a service binding, or any ingress that is not the CF edge sends no
     // CF-Connecting-IP. Collapsing those into a single key would let one caller 429 everyone.

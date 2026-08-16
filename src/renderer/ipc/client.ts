@@ -293,9 +293,7 @@ export const api = {
     run: () => invoke<RepairResult>('repair:run')
   },
   portable: {
-    status: () => invoke<PortableModeStatus>('portable:status'),
-    configure: (enabled: boolean, rootPath?: string | null) =>
-      invoke<PortableModeStatus>('portable:configure', { enabled, rootPath })
+    status: () => invoke<PortableModeStatus>('portable:status')
   },
   peerSync: {
     status: () => invoke<PeerSyncStatus>('peerSync:status'),

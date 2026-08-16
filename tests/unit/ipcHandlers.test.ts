@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
+import { invokeChannels } from '../../src/shared/ipc-channels.js';
 import type { IpcContext } from '../../src/main/ipc/register.js';
 import { registerIpcHandlers } from '../../src/main/ipc/register.js';
 import { createServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
@@ -60,11 +61,12 @@ function setup(): {
 }
 
 describe('ipc handlers', () => {
-  it('registers real handlers for the covered channels', () => {
+  it('registers a handler for every channel in the contract, and no extras', () => {
+    // The handler map is a Partial<Record<IpcChannel, …>>, so a channel omitted from it is not a
+    // compile error — it is a runtime "no handler registered" the moment the renderer calls it.
+    // The preload allowlist is derived from the same list, so every one of these is reachable.
     const { handlers } = setup();
-    for (const channel of ['workspace:create', 'service:update', 'view:setBounds']) {
-      expect(handlers.has(channel)).toBe(true);
-    }
+    expect([...handlers.keys()].sort()).toEqual([...invokeChannels].sort());
   });
 
   it('workspace:create validates and creates a workspace', async () => {
