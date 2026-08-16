@@ -23,12 +23,23 @@ nsis:
 mac:
   icon: build/icon.png
   target:
+    # zip is required for electron-updater's MacUpdater; dmg is the user-facing installer.
+    - zip
     - dmg
 linux:
   icon: build/icon.png
   target:
     - AppImage
     - deb
+  desktop:
+    entry:
+      # Register the appdeck:// deep-link handler in the desktop entry.
+      MimeType: x-scheme-handler/appdeck
+# Registers appdeck:// with the OS in packaged builds (CFBundleURLTypes on macOS).
+protocols:
+  - name: AppDeck
+    schemes:
+      - appdeck
 publish:
   provider: github
   owner: Bahuleyandr
