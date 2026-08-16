@@ -34,7 +34,7 @@
     "libsodium-wrappers-sumo": "0.8.4",
     "lucide-react": "1.21.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react-dom": "19.2.8",
     "zod": "4.4.3",
     "zustand": "5.0.14"
   },
@@ -44,7 +44,7 @@
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "26.0.0",
     "@types/react": "18.3.31",
-    "@types/react-dom": "18.3.7",
+    "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "5.2.0",
     "autoprefixer": "10.5.0",
     "electron": "42.4.1",
