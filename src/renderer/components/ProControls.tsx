@@ -186,7 +186,6 @@ export function ProControls(): JSX.Element | null {
   const refreshSnapshots = (): void =>
     void api.snapshots.list(selectedWorkspaceId).then(setSnapshots);
   const refreshAnalytics = (): void => void api.analytics.personal().then(setAnalytics);
-  const refreshPortable = (): void => void api.portable.status().then(setPortableStatus);
   const refreshPeerSync = (): void => void api.peerSync.status().then(setPeerStatus);
   const refreshWorkKits = (): void => void api.workKits.list().then(setWorkKits);
 
@@ -388,7 +387,7 @@ export function ProControls(): JSX.Element | null {
               <WorkKitsPanel kits={workKits} refresh={refreshWorkKits} load={load} />
             )}
             {panel === 'portable' && (
-              <PortablePanel status={portableStatus} refresh={refreshPortable} />
+              <PortablePanel status={portableStatus} />
             )}
             {panel === 'peerSync' && (
               <PeerSyncPanel status={peerStatus} refresh={refreshPeerSync} />

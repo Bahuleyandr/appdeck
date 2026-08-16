@@ -33,6 +33,12 @@ const DUMMY_AUTH_HASH = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    // Refuse to run misconfigured rather than HMACing tokens and decoy salts with the string
+    // "undefined" — that secret is in the repo, so every token would be forgeable.
+    if (!env.TOKEN_SECRET) {
+      console.error('TOKEN_SECRET is not set — run `wrangler secret put TOKEN_SECRET`');
+      return json({ error: 'server_misconfigured' }, 500);
+    }
     try {
       if (request.method === 'POST' && url.pathname === '/api/signup')
         return await signup(request, env);

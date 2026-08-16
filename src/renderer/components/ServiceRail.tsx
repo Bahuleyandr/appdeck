@@ -32,7 +32,7 @@ function readWidth(): number {
 
 export function ServiceRail(): JSX.Element {
   const {
-    services,
+    services: allServices,
     selectedServiceIds,
     serviceStates,
     unread,
@@ -44,6 +44,11 @@ export function ServiceRail(): JSX.Element {
     sleepService,
     wakeService
   } = useAppStore();
+  const focusStatus = useAppStore((state) => state.focusStatus);
+  // An active focus mode can hide muted services so the rail only shows what may interrupt you.
+  const services = focusStatus?.activeMode?.settings.hideMutedServices
+    ? allServices.filter((service) => !service.muted)
+    : allServices;
   const [width, setWidth] = useState(readWidth);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true');
   const [editingId, setEditingId] = useState<string | null>(null);

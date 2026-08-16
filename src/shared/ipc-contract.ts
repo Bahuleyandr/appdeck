@@ -362,10 +362,6 @@ export const ipcSchemas = {
   'repair:run': z.void(),
 
   'portable:status': z.void(),
-  'portable:configure': z.object({
-    enabled: z.boolean(),
-    rootPath: z.string().nullable().optional()
-  }),
 
   'peerSync:status': z.void(),
   'peerSync:upsert': z.object({

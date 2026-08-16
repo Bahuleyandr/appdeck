@@ -84,7 +84,9 @@ Worker invocations and D1 writes; the in-Worker limiter enforces the precise per
   the `sessions` and `rate_limits` tables from migration `0002`. **Existing deployments:** after
   this upgrade every device must log in again once (old stateless tokens are rejected).
 - Set a strong random `TOKEN_SECRET` (32+ bytes); it signs tokens **and** derives the decoy
-  auth-salts that prevent account enumeration.
+  auth-salts that prevent account enumeration. The Worker refuses every request with
+  `500 server_misconfigured` until it is set, so a forgotten secret fails loudly instead of
+  signing tokens with a value anyone can read in this repo.
 - Add a Cloudflare WAF rate-limiting rule for `/api/*` as described above; consider Bot Fight
   Mode on the zone.
 - D1 growth is bounded: one row per user, one vault row per user (≤2 MB ciphertext), sessions

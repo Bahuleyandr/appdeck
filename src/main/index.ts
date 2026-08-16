@@ -27,6 +27,7 @@ import { LinkRouter } from './services/linkRouter.js';
 import { logError } from './services/log.js';
 import { NotificationService } from './services/notifications.js';
 import { PeerSyncRuntime } from './services/peerSyncRuntime.js';
+import { applyPortableMode } from './services/portableMode.js';
 import { SleepManager } from './services/sleepManager.js';
 import { TrackerBlocker } from './services/trackerBlock.js';
 import { UpdaterService } from './services/updater.js';
@@ -76,6 +77,13 @@ process.on('uncaughtException', (error) => {
   app.exit(1);
 });
 process.on('unhandledRejection', (reason) => logError('unhandledRejection', reason));
+
+// Must run before anything resolves userData — the database, logs, encrypted vault and every
+// service's Chromium partition all live under it.
+const portableRoot = applyPortableMode();
+if (portableRoot) {
+  console.log(`[portable] user data directory: ${portableRoot}`);
+}
 
 app.setAsDefaultProtocolClient(APP_PROTOCOL);
 if (process.platform === 'win32') {
