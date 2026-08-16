@@ -15,6 +15,7 @@ import { createServiceInstance } from '../../src/main/db/repositories/serviceIns
 import { getMeta, setMeta } from '../../src/main/db/repositories/meta.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { generateRootKey } from '../../src/main/sync/crypto.js';
+import { encryptVault } from '../../src/main/sync/vault.js';
 import { CloudSyncService } from '../../src/main/sync/cloudSync.js';
 import { FileSyncService } from '../../src/main/sync/fileSync.js';
 import { createTestDb } from './helpers.js';
@@ -130,6 +131,87 @@ describe('cloud sync robustness', () => {
     await service.syncNow();
     expect(service.status().lastError).toBeUndefined();
     expect(service.status().lastSyncAt).toBeTypeOf('number');
+  });
+});
+
+describe('sync applied notifications', () => {
+  it('cloud scheduleSync fires onApplied when remote changes were merged', async () => {
+    const context = createTestDb();
+    const rootKey = await generateRootKey();
+    setMeta(context.db, 'cloud_url', 'https://sync.test');
+    setMeta(context.db, 'cloud_token_safe', plainProtect('token-1'));
+    setMeta(context.db, 'cloud_root_safe', plainProtect(Buffer.from(rootKey).toString('base64')));
+    const onApplied = vi.fn();
+    const service = new CloudSyncService(context.db, onApplied);
+
+    // A remote vault with one extra service instance the local DB has never seen.
+    const remote = createTestDb();
+    const remoteWorkspace = listWorkspaces(remote.db)[0];
+    if (!remoteWorkspace) throw new Error('Expected default workspace');
+    createServiceInstance(remote.db, remote.deviceId, {
+      recipeId: 'slack',
+      workspaceId: remoteWorkspace.id,
+      displayName: 'Remote Slack'
+    });
+    const ciphertext = (await encryptVault(remote.db, rootKey)).toString('base64');
+
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return Promise.resolve(jsonResponse({ revision: 2 }));
+      }
+      if (String(input).endsWith('/api/vault')) {
+        return Promise.resolve(jsonResponse({ ciphertext, revision: 1 }));
+      }
+      throw new Error(`Unexpected fetch: ${String(input)}`);
+    });
+
+    vi.useFakeTimers();
+    service.scheduleSync();
+    vi.advanceTimersByTime(2500);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(onApplied).toHaveBeenCalled());
+    const result = onApplied.mock.calls[0]?.[0] as { applied: number };
+    expect(result.applied).toBeGreaterThan(0);
+    service.dispose();
+  });
+
+  it('file scheduleSync fires onApplied only when the vault brought changes', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'appdeck-sync-'));
+    const writer = createTestDb();
+    const writerService = new FileSyncService(writer.db);
+    const { recoveryPhrase } = await writerService.configure(folder, 'passphrase-1');
+
+    const readerContext = createTestDb();
+    const onApplied = vi.fn();
+    const reader = new FileSyncService(readerContext.db, onApplied);
+    await reader.join(folder, recoveryPhrase, 'passphrase-2');
+
+    // Writer publishes a new service; the reader's scheduled sync should apply + notify.
+    const writerWorkspace = listWorkspaces(writer.db)[0];
+    if (!writerWorkspace) throw new Error('Expected default workspace');
+    createServiceInstance(writer.db, writer.deviceId, {
+      recipeId: 'gmail',
+      workspaceId: writerWorkspace.id,
+      displayName: 'Writer Mail'
+    });
+    await writerService.syncNow();
+
+    vi.useFakeTimers();
+    reader.scheduleSync();
+    vi.advanceTimersByTime(2000);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+
+    // Converged: another scheduled sync applies nothing and stays quiet.
+    vi.useFakeTimers();
+    reader.scheduleSync();
+    vi.advanceTimersByTime(2000);
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onApplied).toHaveBeenCalledTimes(1);
+
+    writerService.dispose();
+    reader.dispose();
   });
 });
 

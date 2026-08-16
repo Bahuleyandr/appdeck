@@ -6,6 +6,7 @@ interface FakeWebContents {
   executeJavaScript: ReturnType<typeof vi.fn>;
   insertCSS: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  reload: ReturnType<typeof vi.fn>;
   setAudioMuted: ReturnType<typeof vi.fn>;
   setBackgroundThrottling: ReturnType<typeof vi.fn>;
 }
@@ -102,11 +103,16 @@ const electronMock = vi.hoisted(() => {
 
 vi.mock('electron', () => electronMock.module);
 
+import {
+  deleteFirewallRule,
+  upsertFirewallRule
+} from '../../src/main/db/repositories/privacyFirewall.js';
 import { createServiceInstance, updateServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
 import { ensureDefaultTab } from '../../src/main/db/repositories/serviceTabs.js';
 import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { RecipeLoader } from '../../src/main/recipes/loader.js';
 import { approveCustomCode } from '../../src/main/services/customCode.js';
+import { TrackerBlocker } from '../../src/main/services/trackerBlock.js';
 import { ServiceViewManager } from '../../src/main/views/serviceViewManager.js';
 import type { BrowserWindow } from 'electron';
 import { createTestDb } from './helpers.js';
@@ -123,7 +129,7 @@ function fakeWindow(): BrowserWindow {
   } as unknown as BrowserWindow;
 }
 
-function setup(options: { locked: () => boolean }) {
+function setup(options: { locked: () => boolean; trackerBlocker?: TrackerBlocker }) {
   const context = createTestDb();
   const workspace = listWorkspaces(context.db)[0];
   if (!workspace) throw new Error('Expected default workspace');
@@ -143,7 +149,7 @@ function setup(options: { locked: () => boolean }) {
     () => {},
     options.locked,
     null,
-    null,
+    options.trackerBlocker ?? null,
     fakeWindow()
   );
   return { context, service, viewId: `${service.id}#${tab.id}`, manager, sendPush };
@@ -235,7 +241,7 @@ describe('service view guards', () => {
   });
 
   it('estimates memory saved by sleeping from the last known usage', () => {
-    const { service, viewId, manager } = setup({ locked: () => false });
+    const { context, service, viewId, manager } = setup({ locked: () => false });
     manager.setBounds([{ viewId, rect: RECT }], [viewId]);
 
     manager.recordMemory(service.id, 320);
@@ -244,6 +250,101 @@ describe('service view guards', () => {
 
     manager.sleep(service.id);
     expect(manager.estimatedSavedMB()).toBe(320);
+
+    // Disabled (and deleted) services don't count as savings — they simply don't run.
+    updateServiceInstance(context.db, context.deviceId, service.id, { disabled: true });
+    expect(manager.estimatedSavedMB()).toBe(0);
+
+    updateServiceInstance(context.db, context.deviceId, service.id, { disabled: false });
+    expect(manager.estimatedSavedMB()).toBe(320);
+    manager.forgetInstance(service.id);
+    expect(manager.estimatedSavedMB()).toBe(0);
+  });
+
+  it('auto-reloads an attached pane after a transient crash', () => {
+    vi.useFakeTimers();
+    try {
+      const { service, viewId, manager, sendPush } = setup({ locked: () => false });
+      manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+      const view = electronMock.state.createdViews[0];
+      if (!view) throw new Error('Expected a created view');
+      const crash = view.webContents.handlers.get('render-process-gone');
+      if (!crash) throw new Error('Expected render-process-gone handler');
+
+      sendPush.mockClear();
+      crash(undefined, { reason: 'crashed' });
+      expect(sendPush).toHaveBeenCalledWith('event:service-state', {
+        instanceId: service.id,
+        state: 'loading'
+      });
+      vi.advanceTimersByTime(1100);
+      expect(view.webContents.reload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('parks a crashed detached pane instead of reloading it off-screen', () => {
+    const { service, viewId, manager, sendPush } = setup({ locked: () => false });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const view = electronMock.state.createdViews[0];
+    if (!view) throw new Error('Expected a created view');
+    const crash = view.webContents.handlers.get('render-process-gone');
+    if (!crash) throw new Error('Expected render-process-gone handler');
+
+    // Detach it (hidden pane), then crash.
+    manager.setBounds([], []);
+    sendPush.mockClear();
+    crash(undefined, { reason: 'oom' });
+
+    expect(view.webContents.reload).not.toHaveBeenCalled();
+    expect(view.webContents.close).toHaveBeenCalled();
+    expect(sendPush).toHaveBeenCalledWith('event:service-state', {
+      instanceId: service.id,
+      state: 'sleeping'
+    });
+  });
+
+  it('enforces firewall rules and tracker blocking from one merged onBeforeRequest handler', () => {
+    const blocker = new TrackerBlocker();
+    blocker.setEnabled(true);
+    const { context, viewId, manager } = setup({ locked: () => false, trackerBlocker: blocker });
+
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const partition = [...electronMock.state.partitions.values()][0] as {
+      webRequest: { onBeforeRequest: ReturnType<typeof vi.fn> };
+    };
+    expect(partition.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1);
+    const handler = partition.webRequest.onBeforeRequest.mock.calls[0]?.[0] as (
+      details: { url: string; resourceType: string },
+      callback: (response: { cancel?: boolean }) => void
+    ) => void;
+
+    const cancels = (url: string): boolean => {
+      let cancelled = false;
+      handler({ url, resourceType: 'script' }, (response) => {
+        cancelled = Boolean(response.cancel);
+      });
+      return cancelled;
+    };
+
+    // Tracker blocking works without any firewall rules configured.
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(true);
+    expect(blocker.stats().blockedTotal).toBe(1);
+    expect(cancels('https://blocked.example.com/app.js')).toBe(false);
+
+    // Firewall rules apply through the same handler, and the rule cache sees writes.
+    const rule = upsertFirewallRule(context.db, {
+      rule_type: 'domain',
+      pattern: 'blocked.example.com',
+      action: 'block'
+    });
+    expect(cancels('https://blocked.example.com/app.js')).toBe(true);
+    deleteFirewallRule(context.db, rule.id);
+    expect(cancels('https://blocked.example.com/app.js')).toBe(false);
+
+    blocker.setEnabled(false);
+    expect(cancels('https://www.google-analytics.com/collect')).toBe(false);
   });
 
   it('reports instance visibility from the last bounds sync', () => {
@@ -253,5 +354,37 @@ describe('service view guards', () => {
     expect(manager.isInstanceVisible(service.id)).toBe(true);
     manager.setBounds([], []);
     expect(manager.isInstanceVisible(service.id)).toBe(false);
+  });
+
+  it('never trims a service the user marked never-sleep, even parked in the tray', () => {
+    const { context, service, viewId, manager } = setup({ locked: () => false });
+    // Explicit never-sleep, and muted so the tier would otherwise be deep (destroy).
+    updateServiceInstance(context.db, context.deviceId, service.id, {
+      muted: true,
+      sleep_policy: { idleMinutes: null }
+    });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    const view = electronMock.state.createdViews[0];
+    if (!view) throw new Error('Expected a created view');
+
+    // Window hidden to the tray: every view is detached, then the trim sweep runs well past
+    // the hidden-view window.
+    manager.hideAll();
+    const trimmed = manager.trimHiddenViews(0, Date.now() + 60 * 60_000);
+
+    expect(trimmed).toBe(0);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(manager.isDozing(service.id)).toBe(false);
+  });
+
+  it('still trims an ordinary hidden service', () => {
+    const { service, viewId, manager } = setup({ locked: () => false });
+    manager.setBounds([{ viewId, rect: RECT }], [viewId]);
+    manager.hideAll();
+
+    manager.trimHiddenViews(0, Date.now() + 60 * 60_000);
+
+    // Default policy + unmuted => doze tier (renderer kept alive, notifications flowing).
+    expect(manager.isDozing(service.id)).toBe(true);
   });
 });

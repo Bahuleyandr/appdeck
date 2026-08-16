@@ -95,6 +95,60 @@ describe('automation runtime', () => {
     expect(listTasks(db)).toHaveLength(2);
   });
 
+  it('fires an overnight schedule once per occurrence, including the after-midnight tail', () => {
+    const { db } = createTestDb();
+    upsertAutomation(db, {
+      name: 'Night shift',
+      // Monday 22:00 through Tuesday 06:00 — the occurrence belongs to Monday.
+      trigger: { type: 'schedule', schedule: [{ from: '22:00', to: '06:00', days: [1] }] },
+      actions: [{ type: 'createTask', value: 'night tick' }]
+    });
+    const { runtime } = makeRuntime(db);
+    // 2026-07-06 is a Monday.
+    const monday2200 = new Date(2026, 6, 6, 22, 0).getTime();
+    const tuesday0200 = new Date(2026, 6, 7, 2, 0).getTime();
+
+    expect(runtime.handleSchedule(monday2200).ran).toBe(1);
+    expect(runtime.handleSchedule(monday2200 + 60_000).ran).toBe(0);
+    // Past midnight the window is still Monday's occurrence — no refire.
+    expect(runtime.handleSchedule(tuesday0200).ran).toBe(0);
+    expect(runtime.handleSchedule(new Date(2026, 6, 7, 5, 59).getTime()).ran).toBe(0);
+    expect(listTasks(db)).toHaveLength(1);
+
+    // The next Monday is a fresh occurrence.
+    expect(runtime.handleSchedule(new Date(2026, 6, 13, 22, 0).getTime()).ran).toBe(1);
+  });
+
+  it('fires in the after-midnight tail even when no tick landed before midnight', () => {
+    const { db } = createTestDb();
+    upsertAutomation(db, {
+      name: 'Night shift tail',
+      trigger: { type: 'schedule', schedule: [{ from: '22:00', to: '06:00', days: [1] }] },
+      actions: [{ type: 'createTask', value: 'tail tick' }]
+    });
+    const { runtime } = makeRuntime(db);
+
+    // Tuesday 02:00 belongs to Monday's window; this previously never fired.
+    expect(runtime.handleSchedule(new Date(2026, 6, 7, 2, 0).getTime()).ran).toBe(1);
+    expect(runtime.handleSchedule(new Date(2026, 6, 7, 2, 1).getTime()).ran).toBe(0);
+  });
+
+  it('does not refire every tick on the scheduled day\'s own early morning', () => {
+    const { db } = createTestDb();
+    upsertAutomation(db, {
+      name: 'Night shift off-window',
+      trigger: { type: 'schedule', schedule: [{ from: '22:00', to: '06:00', days: [1] }] },
+      actions: [{ type: 'createTask', value: 'stray tick' }]
+    });
+    const { runtime } = makeRuntime(db);
+
+    // Monday 02:00 is Sunday's tail, and Sunday is not scheduled: previously this matched the
+    // trigger but had no slot start, so it refired on every 60-second tick.
+    expect(runtime.handleSchedule(new Date(2026, 6, 6, 2, 0).getTime()).ran).toBe(0);
+    expect(runtime.handleSchedule(new Date(2026, 6, 6, 2, 1).getTime()).ran).toBe(0);
+    expect(listTasks(db)).toHaveLength(0);
+  });
+
   it('runAiPrompt runs a saved prompt and records the result', async () => {
     const { db } = createTestDb();
     const prompt = upsertAiPrompt(db, { title: 'Digest', prompt: 'Summarize my day' });

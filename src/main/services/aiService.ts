@@ -67,8 +67,13 @@ export class AiService {
     const localOnly = input.localOnly ?? current.localOnly;
     const apiKey = input.apiKey?.trim();
 
-    if (localOnly && baseUrl && !isLocalUrl(baseUrl)) {
-      throw new Error('Local-only AI requires a localhost, 127.0.0.1, or ::1 endpoint.');
+    if (localOnly) {
+      if (provider !== 'ollama' && provider !== 'compatible') {
+        throw new Error('Local-only AI requires the Ollama or OpenAI-compatible provider.');
+      }
+      if (!baseUrl || !isLocalUrl(baseUrl)) {
+        throw new Error('Local-only AI requires a localhost, 127.0.0.1, or ::1 endpoint.');
+      }
     }
     if (provider !== 'ollama' && provider !== 'compatible' && !apiKey && !this.apiKey()) {
       throw new Error('API key is empty');

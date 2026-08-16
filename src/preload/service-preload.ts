@@ -26,6 +26,12 @@ async function bootstrap(): Promise<void> {
   forwardMainWorldNotifications(serviceInstanceId);
   const report = (): void => {
     const count = readUnread(resolved);
+    // A user-supplied declarative regex can capture a non-numeric group. NaN never equals
+    // lastCount (NaN !== NaN), so an invalid count would re-report — and get rejected by the
+    // schema — on every poll forever. Only forward well-formed counts.
+    if (!isReportableCount(count)) {
+      return;
+    }
     if (count.direct !== lastCount.direct || count.indirect !== lastCount.indirect) {
       lastCount = count;
       void ipcRenderer.invoke('unread:report', { instanceId: serviceInstanceId, count });
@@ -76,6 +82,13 @@ function forwardMainWorldNotifications(id: string): void {
       });
     }
   });
+}
+
+// The unread:report schema demands non-negative integers; anything else must never leave here.
+function isReportableCount(count: UnreadCount): boolean {
+  return [count.direct, count.indirect].every(
+    (value) => Number.isInteger(value) && value >= 0
+  );
 }
 
 function readUnread(resolved: ResolvedRecipeForInstance): UnreadCount {

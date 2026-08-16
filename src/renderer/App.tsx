@@ -51,6 +51,9 @@ export function App(): JSX.Element {
     setCommandOpen,
     bumpUnread,
     applySettings,
+    selectWorkspace,
+    requestViewsResync,
+    activateFocusMode,
     proControlsOpen,
     dashboardOpen,
     settingsOpen,
@@ -91,6 +94,18 @@ export function App(): JSX.Element {
       }),
       api.on('event:settings-changed', (payload) => {
         applySettings(payload as SettingsMap);
+      }),
+      // Main asks for a bounds re-send after the window is shown so parked views re-attach.
+      api.on('event:views-resync-requested', () => {
+        requestViewsResync();
+      }),
+      api.on('event:workspace-open-requested', (payload) => {
+        const event = payload as { workspaceId: string };
+        void selectWorkspace(event.workspaceId);
+      }),
+      api.on('event:focus-mode-requested', (payload) => {
+        const event = payload as { focusModeId: string };
+        void activateFocusMode(event.focusModeId);
       })
     ];
     const keyHandler = (event: KeyboardEvent): void => {
@@ -166,12 +181,15 @@ export function App(): JSX.Element {
   }, [
     load,
     selectService,
+    selectWorkspace,
     setCommandOpen,
     setLocked,
     setServiceState,
     setUnread,
     bumpUnread,
-    applySettings
+    applySettings,
+    requestViewsResync,
+    activateFocusMode
   ]);
 
   if (loading) {

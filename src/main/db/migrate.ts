@@ -27,7 +27,9 @@ function tableExists(db: Database.Database, tableName: string): boolean {
   return Boolean(row);
 }
 
-function getSchemaVersion(db: Database.Database): number {
+export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+
+export function getSchemaVersion(db: Database.Database): number {
   if (!tableExists(db, 'meta')) {
     return 0;
   }

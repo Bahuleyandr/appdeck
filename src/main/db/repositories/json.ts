@@ -16,7 +16,3 @@ export function stringifyJson(value: unknown): string {
 export function toBool(value: number | boolean): boolean {
   return value === true || value === 1;
 }
-
-export function boolInt(value: boolean | undefined): number | undefined {
-  return typeof value === 'boolean' ? (value ? 1 : 0) : undefined;
-}

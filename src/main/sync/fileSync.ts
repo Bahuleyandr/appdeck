@@ -23,7 +23,11 @@ export class FileSyncService {
   /** Ignore watcher events until this time — they are echoes of our own write. */
   private suppressWatcherUntil = 0;
 
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    /** Called when a background sync (watcher/scheduled) applied remote changes locally. */
+    private readonly onApplied: (result: SyncResult) => void = () => {}
+  ) {}
 
   /** Resume watching on startup if sync is configured and the key is recoverable without a passphrase. */
   init(): void {
@@ -75,18 +79,6 @@ export class FileSyncService {
     await this.writeVault(target, rootKey);
     this.watch(folderPath);
     return { ok: true };
-  }
-
-  async exportVault(targetPath: string, passphrase: string): Promise<void> {
-    // Manual export to an arbitrary path — does not touch the live sync state.
-    await writeVaultFile(this.db, await this.requireRootKey(passphrase), targetPath);
-  }
-
-  async importVault(sourcePath: string, passphrase: string): Promise<SyncResult> {
-    const plaintext = await readVaultFile(sourcePath, await this.requireRootKey(passphrase));
-    const result = mergeVaultPlaintext(this.db, plaintext);
-    setMeta(this.db, 'sync_last_at', String(Date.now()));
-    return result;
   }
 
   // Deliberately not `async`: callers awaiting a coalesced call must receive the SAME in-flight
@@ -150,7 +142,9 @@ export class FileSyncService {
       clearTimeout(this.localDebounce);
     }
     this.localDebounce = setTimeout(() => {
-      void this.syncNow().catch(() => undefined);
+      void this.syncNow()
+        .then((result) => this.notifyApplied(result))
+        .catch(() => undefined);
     }, LOCAL_CHANGE_DEBOUNCE_MS);
     this.localDebounce.unref();
   }
@@ -167,10 +161,18 @@ export class FileSyncService {
         clearTimeout(this.watchDebounce);
       }
       this.watchDebounce = setTimeout(() => {
-        void this.syncNow().catch(() => undefined);
+        void this.syncNow()
+          .then((result) => this.notifyApplied(result))
+          .catch(() => undefined);
       }, WATCH_DEBOUNCE_MS);
       this.watchDebounce.unref();
     });
+  }
+
+  private notifyApplied(result: SyncResult): void {
+    if (result.applied > 0) {
+      this.onApplied(result);
+    }
   }
 
   dispose(): void {

@@ -699,13 +699,6 @@ export interface AppMetrics {
   estimatedSavedMB?: number;
 }
 
-export interface SyncStatus {
-  configured: boolean;
-  folderPath?: string;
-  lastSyncAt?: number;
-  lastError?: string;
-}
-
 export interface FerdiumImportResult {
   created: number;
   skipped: number;

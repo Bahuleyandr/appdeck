@@ -192,12 +192,6 @@ export class ServiceViewManager {
     }
   }
 
-  navigate(idOrViewId: string, url: string): void {
-    if (!isHttpUrl(url)) return;
-    const contents = this.contentsFor(idOrViewId);
-    if (contents) void contents.loadURL(url);
-  }
-
   routeNavigate(instanceId: string, url: string): void {
     if (!isHttpUrl(url)) return;
     const contents = this.contentsFor(instanceId);
@@ -290,15 +284,27 @@ export class ServiceViewManager {
   /**
    * Session-scoped estimate of RAM freed by sleeping: the last observed usage of every
    * instance that currently has no live renderer. Deliberately labeled an estimate in the UI.
+   * Deleted and disabled instances aren't "saved by sleeping" — they simply don't run.
    */
   estimatedSavedMB(): number {
     let saved = 0;
     for (const [instanceId, memoryMB] of this.lastKnownMemoryMB.entries()) {
-      if (!this.viewsForInstance(instanceId).length) {
-        saved += memoryMB;
+      if (this.viewsForInstance(instanceId).length) {
+        continue;
       }
+      const instance = getServiceInstance(this.db, instanceId);
+      if (!instance || instance.deleted_at || instance.disabled) {
+        continue;
+      }
+      saved += memoryMB;
     }
     return saved;
+  }
+
+  /** Drop per-instance bookkeeping when a service is deleted. */
+  forgetInstance(instanceId: string): void {
+    this.lastKnownMemoryMB.delete(instanceId);
+    this.pendingNavigations.delete(instanceId);
   }
 
   /** Whether any of the instance's panes were in the renderer's last visible-bounds sync. */
@@ -320,6 +326,11 @@ export class ServiceViewManager {
     for (const managed of this.views.values()) {
       this.detach(managed);
     }
+  }
+
+  /** Forget the focused instance so idle tracking can park it (e.g. window hidden or blurred). */
+  clearActive(): void {
+    this.activeInstanceId = null;
   }
 
   isAudible(instanceId: string): boolean {
@@ -374,6 +385,11 @@ export class ServiceViewManager {
         continue;
       }
       const instance = getServiceInstance(this.db, managed.instanceId);
+      // An explicit `idleMinutes: null` means never sleep. The memory sweep must honour it too —
+      // otherwise hiding to the tray would park a pane the user asked to keep alive.
+      if (instance && instance.sleep_policy.idleMinutes === null) {
+        continue;
+      }
       if (instance && sleepTier(instance) === 'doze') {
         dozedInstances.add(managed.instanceId);
         continue;
@@ -436,7 +452,6 @@ export class ServiceViewManager {
         : null;
     const partition = session.fromPartition(instance.partition_key);
     this.configureSession(partition, instance);
-    this.trackerBlocker?.apply(partition);
     void this.extensionManager?.applyTo(partition);
     const view = new WebContentsView({
       webPreferences: {
@@ -505,6 +520,8 @@ export class ServiceViewManager {
       return;
     }
     this.configuredSessions.add(partition);
+    // Electron keeps ONE onBeforeRequest listener per session, so firewall and tracker-block
+    // logic must share this handler — registering them separately silently drops the first.
     partition.webRequest.onBeforeRequest((details, callback) => {
       const script = testFirewallRules(this.db, details.url, instance.id, {
         ruleType: 'script',
@@ -518,7 +535,16 @@ export class ServiceViewManager {
         ruleType: 'domain',
         resourceType: details.resourceType
       });
-      callback({ cancel: domain.matched && domain.action !== 'allow' });
+      if (domain.matched && domain.action !== 'allow') {
+        callback({ cancel: true });
+        return;
+      }
+      if (this.trackerBlocker?.shouldBlock(details.url)) {
+        this.trackerBlocker.recordBlocked(details.url);
+        callback({ cancel: true });
+        return;
+      }
+      callback({ cancel: false });
     });
     partition.webRequest.onBeforeSendHeaders((details, callback) => {
       const cookie = testFirewallRules(this.db, details.url, instance.id, { ruleType: 'cookie' });
@@ -627,7 +653,15 @@ export class ServiceViewManager {
       if (details.reason === 'clean-exit' || !this.views.has(managed.viewId)) {
         return;
       }
-      const WINDOW_MS = 60_000;
+      if (!managed.attached) {
+        // Off-screen pane: reloading it would burn RAM/CPU out of sight. Park it instead —
+        // the next bounds sync recreates it lazily.
+        this.destroyView(managed.viewId);
+        this.emitState(instance.id, 'sleeping');
+        return;
+      }
+      // A long window so slow OOM loops still trip the breaker instead of reloading forever.
+      const WINDOW_MS = 5 * 60_000;
       const MAX_AUTO_RELOADS = 2;
       const recent = (this.crashTimes.get(managed.viewId) ?? []).filter(
         (when) => Date.now() - when < WINDOW_MS
@@ -765,6 +799,7 @@ export class ServiceViewManager {
     this.detach(managed);
     managed.view.webContents.close();
     this.views.delete(viewId);
+    this.crashTimes.delete(viewId);
   }
 
   private emitState(instanceId: string, state: ServiceState): void {

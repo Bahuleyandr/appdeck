@@ -15,6 +15,7 @@ export function LockScreen(): JSX.Element | null {
   const handleSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setError(null);
+    // try/finally: a rejected IPC call must never leave the form disabled forever.
     if (setupMode) {
       if (passphrase.length < 6) {
         setError('Use at least 6 characters.');
@@ -25,21 +26,31 @@ export function LockScreen(): JSX.Element | null {
         return;
       }
       setBusy(true);
-      await setupLock(passphrase);
-      await lock();
-      setBusy(false);
-      setPassphrase('');
-      setConfirm('');
+      try {
+        await setupLock(passphrase);
+        await lock();
+        setPassphrase('');
+        setConfirm('');
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : String(submitError));
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
-    const ok = await unlock(passphrase);
-    setBusy(false);
-    if (ok) {
-      setPassphrase('');
-      setError(null);
-    } else {
-      setError('Incorrect passphrase.');
+    try {
+      const ok = await unlock(passphrase);
+      if (ok) {
+        setPassphrase('');
+        setError(null);
+      } else {
+        setError('Incorrect passphrase.');
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : String(submitError));
+    } finally {
+      setBusy(false);
     }
   };
 

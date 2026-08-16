@@ -2,11 +2,7 @@ import { app, ipcMain, session, shell } from 'electron';
 import type Database from 'better-sqlite3';
 import { parseIpcPayload, type IpcChannel } from '../../shared/ipc-contract.js';
 import type { PaletteItem } from '../../shared/types.js';
-import {
-  createCustomRecipe,
-  tombstoneCustomRecipe,
-  updateCustomRecipe
-} from '../db/repositories/customRecipes.js';
+import { createCustomRecipe } from '../db/repositories/customRecipes.js';
 import { getLayout, setLayout } from '../db/repositories/layouts.js';
 import {
   createProfile,
@@ -29,13 +25,7 @@ import {
   listTabs,
   setActiveTab
 } from '../db/repositories/serviceTabs.js';
-import {
-  createTask,
-  deleteTask,
-  listTasks,
-  reorderTasks,
-  updateTask
-} from '../db/repositories/tasks.js';
+import { createTask, deleteTask, listTasks, updateTask } from '../db/repositories/tasks.js';
 import { reorderWorkspaceServices } from '../db/repositories/workspaceServices.js';
 import {
   createWorkspace,
@@ -255,6 +245,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
         (candidate) => candidate.id === input.id
       );
       ctx.viewManager.sleep(input.id);
+      ctx.viewManager.forgetInstance(input.id);
       ctx.badgeService.clear(input.id);
       tombstoneServiceInstance(ctx.db, ctx.deviceId, input.id);
       deleteTabsForInstance(ctx.db, input.id);
@@ -274,10 +265,6 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       ctx.viewManager.navigateBack(parseIpcPayload('service:navigateBack', payload).id),
     'service:navigateForward': (payload) =>
       ctx.viewManager.navigateForward(parseIpcPayload('service:navigateForward', payload).id),
-    'service:navigate': (payload) => {
-      const input = parseIpcPayload('service:navigate', payload);
-      ctx.viewManager.navigate(input.id, input.url);
-    },
     'service:sleep': (payload) =>
       ctx.viewManager.sleep(parseIpcPayload('service:sleep', payload).id),
     'service:wake': (payload) => ctx.viewManager.wake(parseIpcPayload('service:wake', payload).id),
@@ -348,17 +335,6 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       const recipe = createCustomRecipe(ctx.db, ctx.deviceId, input);
       ctx.sendDataChanged();
       return recipe;
-    },
-    'recipe:updateCustom': (payload) => {
-      const input = parseIpcPayload('recipe:updateCustom', payload);
-      const recipe = updateCustomRecipe(ctx.db, ctx.deviceId, input.id, input.patch);
-      ctx.sendDataChanged();
-      return recipe;
-    },
-    'recipe:deleteCustom': (payload) => {
-      const input = parseIpcPayload('recipe:deleteCustom', payload);
-      tombstoneCustomRecipe(ctx.db, ctx.deviceId, input.id);
-      ctx.sendDataChanged();
     },
     'recipe:resolveForInstance': (payload) =>
       ctx.recipeLoader.resolveForInstance(
@@ -657,15 +633,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       const input = parseIpcPayload('sync:join', payload);
       return ctx.fileSyncService.join(input.folderPath, input.recoveryPhrase, input.passphrase);
     },
-    'sync:exportVault': (payload) => {
-      const input = parseIpcPayload('sync:exportVault', payload);
-      return ctx.fileSyncService.exportVault(input.targetPath, input.passphrase);
+    'sync:now': async () => {
+      const result = await ctx.fileSyncService.syncNow();
+      if (result.applied > 0) {
+        ctx.sendDataChanged();
+      }
+      return result;
     },
-    'sync:importVault': (payload) => {
-      const input = parseIpcPayload('sync:importVault', payload);
-      return ctx.fileSyncService.importVault(input.sourcePath, input.passphrase);
-    },
-    'sync:now': () => ctx.fileSyncService.syncNow(),
 
     'task:list': () => listTasks(ctx.db),
     'task:create': (payload) => createTask(ctx.db, parseIpcPayload('task:create', payload).title),
@@ -674,8 +648,6 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       return updateTask(ctx.db, input.id, input.patch);
     },
     'task:delete': (payload) => deleteTask(ctx.db, parseIpcPayload('task:delete', payload).id),
-    'task:reorder': (payload) =>
-      reorderTasks(ctx.db, parseIpcPayload('task:reorder', payload).orderedIds),
 
     'palette:query': (payload) => {
       const input = parseIpcPayload('palette:query', payload);
@@ -684,14 +656,23 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
     'notify:incoming': (payload) => {
       const input = parseIpcPayload('notify:incoming', payload);
-      const record = insertNotification(ctx.db, input);
+      const { record, deduped } = insertNotification(ctx.db, input);
+      if (deduped) {
+        // A repeat within the dedup window: the user already saw the toast/badge/automation.
+        return;
+      }
       ctx.notificationService.show(input);
       ctx.automationRuntime.handleNotification(input);
       ctx.sendPush('event:notification', { record, unread: unreadNotificationCount(ctx.db) });
     },
     'unread:report': (payload) => {
       const input = parseIpcPayload('unread:report', payload);
-      ctx.badgeService.setCount(input.instanceId, input.count);
+      // Muted services stay out of the OS badge count; the in-app UI still gets the event.
+      if (getServiceInstance(ctx.db, input.instanceId)?.muted) {
+        ctx.badgeService.clear(input.instanceId);
+      } else {
+        ctx.badgeService.setCount(input.instanceId, input.count);
+      }
       ctx.automationRuntime.handleUnread(input);
       ctx.sendPush('event:unread', input);
     },
@@ -824,7 +805,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
       ctx.cloudSyncService.logout();
       ctx.sendDataChanged();
     },
-    'account:syncNow': () => ctx.cloudSyncService.syncNow()
+    'account:syncNow': async () => {
+      const result = await ctx.cloudSyncService.syncNow();
+      if (result.applied > 0) {
+        ctx.sendDataChanged();
+      }
+      return result;
+    }
   };
 
   for (const [channel, handler] of Object.entries(handlers) as Array<[IpcChannel, Handler]>) {

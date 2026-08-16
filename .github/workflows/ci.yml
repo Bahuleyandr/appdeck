@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Superseded branch/PR runs are cancelled, but never a run on main: two quick merges would
+  # otherwise leave main sitting at "cancelled" with no build artifact instead of green.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   build:
     strategy:
@@ -23,6 +30,26 @@ jobs:
       - run: npm run build
       - run: npx electron-builder --dir --publish never
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # test:e2e rebuilds better-sqlite3 for Electron's ABI, builds the app, and runs
+      # Playwright against the Electron binary (no browser download needed). Electron
+      # needs a display on Linux, hence xvfb-run.
+      - run: xvfb-run --auto-servernum -- npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
   server:
     runs-on: ubuntu-latest
     steps:
@@ -35,4 +62,24 @@ jobs:
       - run: npm ci
         working-directory: server
       - run: npm run typecheck
+        working-directory: server
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Blocking: high-severity advisories in runtime (shipped) dependencies.
+      - name: Audit runtime dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
+      # Advisory only. `|| true` rather than continue-on-error: the latter still stamps a red X
+      # on an otherwise-green job, which trains everyone to ignore the run.
+      - name: Audit all dependencies (advisory)
+        run: npm audit || true
+      # server/ ships no runtime dependencies (devDependencies only), so this is note-only.
+      - name: Audit server dependencies (advisory)
+        run: npm audit --audit-level=high || true
         working-directory: server

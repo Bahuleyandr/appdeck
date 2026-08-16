@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3';
-import { DEFAULT_SLEEP_IDLE_MINUTES } from '../../shared/constants.js';
+import {
+  DEFAULT_DOZE_DEEP_AFTER_MINUTES,
+  DEFAULT_SLEEP_IDLE_MINUTES
+} from '../../shared/constants.js';
 import { focusSleepIdleOverride } from '../db/repositories/focusModes.js';
 import { listServiceInstances } from '../db/repositories/serviceInstances.js';
 import { sleepTier } from './sleepPolicy.js';
@@ -11,6 +14,7 @@ export class SleepManager {
   constructor(
     private readonly db: Database.Database,
     private readonly viewManager: ServiceViewManager,
+    private readonly isWindowHidden: () => boolean = () => false,
     private readonly intervalMs = 30_000
   ) {}
 
@@ -42,8 +46,13 @@ export class SleepManager {
         continue;
       }
       if (this.viewManager.isDozing(instance.id)) {
-        // Already dozing: only decide whether to escalate to deep sleep.
-        const deepAfterMinutes = instance.sleep_policy.deepAfterMinutes ?? null;
+        // Already dozing: only decide whether to escalate to deep sleep. Mirrors idleMinutes:
+        // an *unset* policy falls back to the default, an explicit null means never escalate.
+        const policyDeepAfterMinutes = instance.sleep_policy.deepAfterMinutes;
+        const deepAfterMinutes =
+          policyDeepAfterMinutes === undefined
+            ? DEFAULT_DOZE_DEEP_AFTER_MINUTES
+            : policyDeepAfterMinutes;
         const dozeStartedAt = this.viewManager.dozeStartedAt(instance.id);
         if (
           deepAfterMinutes !== null &&
@@ -72,7 +81,9 @@ export class SleepManager {
         continue;
       }
       // Never doze an on-screen pane: the next bounds sync would instantly un-doze it anyway.
-      if (this.viewManager.isInstanceVisible(instance.id)) {
+      // Panes are only truly on-screen while the main window is showing — a window parked in
+      // the tray keeps its last visible-bounds sync, so ignore it there.
+      if (this.viewManager.isInstanceVisible(instance.id) && !this.isWindowHidden()) {
         continue;
       }
       this.viewManager.doze(instance.id);

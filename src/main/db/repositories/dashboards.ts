@@ -57,21 +57,6 @@ export function deleteDashboard(db: Database.Database, id: string): void {
   db.prepare('DELETE FROM dashboards WHERE id = ?').run(id);
 }
 
-export function ensureDefaultDashboard(
-  db: Database.Database,
-  workspaceId: string | null
-): Dashboard {
-  const row = db
-    .prepare('SELECT * FROM dashboards WHERE workspace_id IS ? ORDER BY created_at ASC LIMIT 1')
-    .get(workspaceId) as DashboardRow | undefined;
-  if (row) return mapDashboard(row);
-  return upsertDashboard(db, {
-    name: 'Dashboard',
-    workspace_id: workspaceId,
-    widgets: defaultWidgets()
-  });
-}
-
 function defaultWidgets(): DashboardWidget[] {
   return [
     { id: crypto.randomUUID(), type: 'shortcuts', title: 'Shortcuts', config: {} },

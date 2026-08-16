@@ -17,7 +17,7 @@ import type {
 import { getMeta, setMeta } from '../db/repositories/meta.js';
 import { markPeerSeen } from '../db/repositories/peerSync.js';
 import { mergeVaultPlaintext } from '../sync/merge.js';
-import { buildVaultPlaintext } from '../sync/vault.js';
+import { buildVaultPlaintext, vaultPlaintextSchema } from '../sync/vault.js';
 
 export interface PeerVaultEnvelope {
   version: 1;
@@ -175,17 +175,10 @@ function derivePeerKey(secret: string, salt: Buffer): Buffer {
   return scryptSync(secret, salt, 32);
 }
 
+// Full schema validation, exactly like decryptVault: a peer is another device, but its payload
+// still crosses the network and must not reach the merge layer malformed.
 function parsePeerVaultPlaintext(raw: string): VaultPlaintext {
-  const parsed: unknown = JSON.parse(raw);
-  if (
-    !parsed ||
-    typeof parsed !== 'object' ||
-    typeof (parsed as { schemaVersion?: unknown }).schemaVersion !== 'number' ||
-    !Array.isArray((parsed as { records?: unknown }).records)
-  ) {
-    throw new Error('Invalid peer vault payload');
-  }
-  return parsed as VaultPlaintext;
+  return vaultPlaintextSchema.parse(JSON.parse(raw));
 }
 
 function ensurePeerSecret(db: Database.Database): string {

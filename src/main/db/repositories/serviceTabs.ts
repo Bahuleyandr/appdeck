@@ -27,19 +27,6 @@ export function getTab(db: Database.Database, id: string): ServiceTab | null {
   return row ? mapTab(row) : null;
 }
 
-export function getActiveTab(db: Database.Database, instanceId: string): ServiceTab | null {
-  const active = db.prepare('SELECT * FROM service_tabs WHERE service_instance_id = ? AND active = 1 LIMIT 1').get(instanceId) as
-    | ServiceTabRow
-    | undefined;
-  if (active) {
-    return mapTab(active);
-  }
-  const first = db
-    .prepare('SELECT * FROM service_tabs WHERE service_instance_id = ? ORDER BY position ASC, created_at ASC LIMIT 1')
-    .get(instanceId) as ServiceTabRow | undefined;
-  return first ? mapTab(first) : null;
-}
-
 /** Guarantees an instance has at least one tab, seeding from its start/last URL. */
 export function ensureDefaultTab(db: Database.Database, instanceId: string, fallbackUrl: string): ServiceTab {
   const existing = listTabs(db, instanceId);

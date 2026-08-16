@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import electronUpdater from 'electron-updater';
+import { logError } from './log.js';
 
 const { autoUpdater } = electronUpdater;
 
@@ -23,8 +24,14 @@ export class UpdaterService {
     autoUpdater.on('update-not-available', () => this.set('up-to-date'));
     autoUpdater.on('download-progress', () => this.set('downloading'));
     autoUpdater.on('update-downloaded', () => this.set('downloaded'));
-    autoUpdater.on('error', () => this.set('error'));
-    void autoUpdater.checkForUpdatesAndNotify().catch(() => this.set('error'));
+    autoUpdater.on('error', (error) => {
+      logError('updater', error);
+      this.set('error');
+    });
+    void autoUpdater.checkForUpdatesAndNotify().catch((error: unknown) => {
+      logError('updater', error);
+      this.set('error');
+    });
   }
 
   status(): { status: UpdateStatus } {
@@ -35,7 +42,10 @@ export class UpdaterService {
     if (!app.isPackaged) {
       return { status: 'dev' };
     }
-    void autoUpdater.checkForUpdates().catch(() => this.set('error'));
+    void autoUpdater.checkForUpdates().catch((error: unknown) => {
+      logError('updater', error);
+      this.set('error');
+    });
     return { status: this.lastStatus };
   }
 

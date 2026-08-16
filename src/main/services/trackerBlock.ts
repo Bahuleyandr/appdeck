@@ -1,5 +1,3 @@
-import type { Session } from 'electron';
-
 // Small starter blocklist of common tracker/analytics/ad hosts. Opt-in per the tracker_block
 // setting; applied per service partition. Not a full EasyList — enough to be useful out of the box.
 const BLOCKED_HOSTS = [
@@ -27,7 +25,6 @@ const BLOCKED_HOSTS = [
 
 export class TrackerBlocker {
   private enabled = false;
-  private readonly applied = new WeakSet<Session>();
   private blockedTotal = 0;
   private readonly blockedByHost = new Map<string, number>();
 
@@ -35,19 +32,24 @@ export class TrackerBlocker {
     this.enabled = enabled;
   }
 
-  apply(session: Session): void {
-    if (this.applied.has(session)) {
-      return;
+  /**
+   * Pure decision for the shared onBeforeRequest handler in ServiceViewManager. Electron keeps
+   * only one listener per webRequest event, so the blocker must not register its own — the
+   * firewall handler calls this instead and records hits via recordBlocked.
+   */
+  shouldBlock(url: string): boolean {
+    return this.enabled && isBlocked(url);
+  }
+
+  recordBlocked(url: string): void {
+    this.blockedTotal += 1;
+    let host = 'unknown';
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      // Keep the aggregate even if parsing fails.
     }
-    this.applied.add(session);
-    session.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-      if (this.enabled && isBlocked(details.url)) {
-        this.recordBlocked(details.url);
-        callback({ cancel: true });
-        return;
-      }
-      callback({});
-    });
+    this.blockedByHost.set(host, (this.blockedByHost.get(host) ?? 0) + 1);
   }
 
   stats(): {
@@ -63,17 +65,6 @@ export class TrackerBlocker {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10)
     };
-  }
-
-  private recordBlocked(url: string): void {
-    this.blockedTotal += 1;
-    let host = 'unknown';
-    try {
-      host = new URL(url).hostname;
-    } catch {
-      // Keep the aggregate even if parsing fails.
-    }
-    this.blockedByHost.set(host, (this.blockedByHost.get(host) ?? 0) + 1);
   }
 }
 
