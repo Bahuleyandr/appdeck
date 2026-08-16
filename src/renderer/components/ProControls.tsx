@@ -1106,8 +1106,8 @@ function ServicePanel({
             <div className="rounded-md border border-amber-400/50 bg-amber-400/10 p-2 text-xs">
               <div className="mb-1 font-semibold">Custom code needs your approval</div>
               <div className="text-muted">
-                The custom CSS/JS on this service changed outside this device (sync or import).
-                It will not run until you review and approve it here.
+                The custom CSS/JS on this service changed outside this device (sync or import). It
+                will not run until you review and approve it here.
               </div>
               <button
                 className="app-button mt-2"
@@ -2053,6 +2053,18 @@ function TrustPanel({
   status: TrustStatus | null;
   refresh: () => void;
 }): JSX.Element {
+  const [updatingBlocklist, setUpdatingBlocklist] = useState(false);
+  const [blocklistError, setBlocklistError] = useState<string | null>(null);
+  const blocklist = status?.tracker.blocklist;
+  const updateBlocklist = (): void => {
+    setUpdatingBlocklist(true);
+    setBlocklistError(null);
+    api.trust
+      .updateBlocklist()
+      .then(() => refresh())
+      .catch(() => setBlocklistError('Blocklist update failed. Check your connection.'))
+      .finally(() => setUpdatingBlocklist(false));
+  };
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <section className="panel rounded-md p-3">
@@ -2073,6 +2085,24 @@ function TrustPanel({
             <div className="text-xs text-muted">Blocked requests</div>
             <div className="mt-1 text-xl font-semibold">{status?.tracker.blockedTotal ?? 0}</div>
           </div>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line p-3">
+          <div>
+            <div className="text-xs text-muted">Blocklist</div>
+            <div className="mt-1 text-sm">
+              {blocklist?.loaded
+                ? `${blocklist.lists.join(' + ') || 'Bundled snapshot'} · ${
+                    blocklist.generatedAt
+                      ? new Date(blocklist.generatedAt).toLocaleDateString()
+                      : 'unknown date'
+                  }`
+                : 'Not loaded'}
+            </div>
+            {blocklistError && <div className="mt-1 text-xs text-red-400">{blocklistError}</div>}
+          </div>
+          <button className="app-button" onClick={updateBlocklist} disabled={updatingBlocklist}>
+            {updatingBlocklist ? 'Updating…' : 'Update blocklist'}
+          </button>
         </div>
         <div className="mt-3 space-y-1">
           {(status?.tracker.topHosts ?? []).map((host) => (
@@ -3179,8 +3209,7 @@ function PeerSyncPanel({
           <span>
             Share this device&apos;s vault with peers
             <span className="block text-xs text-muted">
-              Opens a local encrypted endpoint (off by default). Peers still need the shared
-              secret.
+              Opens a local encrypted endpoint (off by default). Peers still need the shared secret.
             </span>
           </span>
         </label>

@@ -8,6 +8,7 @@ import type {
   AutomationRule,
   AutomationTestResult,
   AppMetrics,
+  BlocklistInfo,
   BrowserImportPreview,
   CustomRecipe,
   Dashboard,
@@ -217,7 +218,8 @@ export const api = {
       invoke<MigrationRunResult>('migration:run', { data, workspaceId })
   },
   trust: {
-    status: () => invoke<TrustStatus>('trust:status')
+    status: () => invoke<TrustStatus>('trust:status'),
+    updateBlocklist: () => invoke<BlocklistInfo>('trust:updateBlocklist')
   },
   performance: {
     status: () => invoke<PerformanceStatus>('performance:status')
@@ -380,8 +382,7 @@ export const api = {
     triage: () => invoke<TriageItem[]>('ai:triage'),
     draftReply: (notificationId: number, instruction?: string) =>
       invoke<AiPromptRunResult>('ai:draftReply', { notificationId, instruction }),
-    suggestMutes: () =>
-      invoke<Array<{ instanceId: string; reason: string }>>('ai:suggestMutes')
+    suggestMutes: () => invoke<Array<{ instanceId: string; reason: string }>>('ai:suggestMutes')
   },
   aiPrompts: {
     list: () => invoke<AiPrompt[]>('aiPrompt:list'),

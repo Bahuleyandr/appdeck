@@ -5,7 +5,12 @@ import { createTestDb } from './helpers.js';
 describe('trust status', () => {
   it('reports vault safety and release checklist shape', () => {
     const { db } = createTestDb();
-    const status = buildTrustStatus(db, { enabled: true, blockedTotal: 3, topHosts: [] });
+    const status = buildTrustStatus(db, {
+      enabled: true,
+      blockedTotal: 3,
+      topHosts: [],
+      blocklist: { loaded: true, generatedAt: Date.now(), lists: ['EasyList', 'EasyPrivacy'] }
+    });
 
     expect(status.tracker.blockedTotal).toBe(3);
     expect(status.vault.safe).toBe(true);

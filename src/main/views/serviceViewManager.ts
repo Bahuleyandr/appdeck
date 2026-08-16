@@ -539,7 +539,7 @@ export class ServiceViewManager {
         callback({ cancel: true });
         return;
       }
-      if (this.trackerBlocker?.shouldBlock(details.url)) {
+      if (this.trackerBlocker?.shouldBlock(details.url, details.resourceType, details.referrer)) {
         this.trackerBlocker.recordBlocked(details.url);
         callback({ cancel: true });
         return;
