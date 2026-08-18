@@ -9,6 +9,7 @@ import {
   testAutomation
 } from '../db/repositories/automations.js';
 import { setManualFocusMode } from '../db/repositories/focusModes.js';
+import { findWorkspaceIdForService } from '../db/repositories/workspaceServices.js';
 import { createTask } from '../db/repositories/tasks.js';
 
 export interface AutomationRuntimeDeps {
@@ -148,7 +149,10 @@ export class AutomationRuntime {
     if (action.type === 'openService' && targetId) {
       this.deps.viewManager.wake(targetId);
       this.deps.viewManager.focus(targetId);
-      this.deps.sendPush('event:notification-clicked', { instanceId: targetId });
+      this.deps.sendPush('event:notification-clicked', {
+        instanceId: targetId,
+        workspaceId: findWorkspaceIdForService(this.deps.db, targetId)
+      });
       return;
     }
     if (action.type === 'openWorkspace' && action.targetId) {
