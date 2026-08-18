@@ -21,9 +21,8 @@ AppDeck should feel free, local-first, and boringly trustworthy from download to
 ## Store / Package Managers
 
 - Winget: publish after a signed installer URL is stable.
-- Homebrew/Linux packages: add once macOS/Linux packaging has a tested CI runner. Linux (AppImage
-  + deb) now builds on tag; macOS packaging is removed from the release workflow until its
-  electron-builder failure can be reproduced on a Mac (see RELEASING.md § Platforms).
+- Homebrew/Linux packages: add once macOS/Linux packaging has a tested CI runner. Windows, macOS
+  (zip + dmg) and Linux (AppImage + deb) all build on tag.
 - GitHub Releases: attach portable and installer artifacts with checksums.
 
 ## Privacy Copy
