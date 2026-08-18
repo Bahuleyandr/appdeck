@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import type { IpcChannel } from '../../shared/ipc-contract.js';
 import { catalogHandlers } from './handlers/catalog.js';
 import { featureHandlers } from './handlers/features.js';
+import { quickViewHandlers } from './handlers/quickview.js';
 import { serviceHandlers } from './handlers/services.js';
 import { systemHandlers } from './handlers/system.js';
 import { workspaceHandlers } from './handlers/workspaces.js';
@@ -21,7 +22,8 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     ...serviceHandlers(ctx),
     ...catalogHandlers(ctx),
     ...featureHandlers(ctx),
-    ...systemHandlers(ctx)
+    ...systemHandlers(ctx),
+    ...quickViewHandlers(ctx)
   };
 
   for (const [channel, handler] of Object.entries(handlers) as Array<[IpcChannel, Handler]>) {

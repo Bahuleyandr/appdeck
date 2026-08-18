@@ -65,6 +65,7 @@ export function systemHandlers(ctx: IpcContext): Partial<Record<IpcChannel, Hand
       ctx.notificationService.show(input);
       ctx.automationRuntime.handleNotification(input);
       ctx.sendPush('event:notification', { record, unread: unreadNotificationCount(ctx.db) });
+      ctx.quickView?.notifyStateChanged();
     },
     'unread:report': (payload) => {
       const input = parseIpcPayload('unread:report', payload);
@@ -76,6 +77,7 @@ export function systemHandlers(ctx: IpcContext): Partial<Record<IpcChannel, Hand
       }
       ctx.automationRuntime.handleUnread(input);
       ctx.sendPush('event:unread', input);
+      ctx.quickView?.notifyStateChanged();
     },
 
     'notification:list': (payload) => {

@@ -13,6 +13,13 @@ import { CloudSyncService } from '../sync/cloudSync.js';
 import { FileSyncService } from '../sync/fileSync.js';
 import { ServiceViewManager } from '../views/serviceViewManager.js';
 
+/** Narrow handle to the tray quick-view popover; kept as an interface so tests can stub it. */
+export interface QuickViewHandle {
+  openApp(instanceId?: string): void;
+  hide(): void;
+  notifyStateChanged(): void;
+}
+
 /** Everything the IPC layer needs from main; passed to each handler group. */
 export interface IpcContext {
   db: Database.Database;
@@ -30,6 +37,7 @@ export interface IpcContext {
   trackerBlocker: TrackerBlocker;
   updaterService: UpdaterService;
   peerSyncRuntime: PeerSyncRuntime;
+  quickView: QuickViewHandle | null;
   sendPush: (channel: string, payload?: unknown) => void;
   sendDataChanged: () => void;
   onSettingsChanged: () => void;

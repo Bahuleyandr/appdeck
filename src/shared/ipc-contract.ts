@@ -422,6 +422,11 @@ export const ipcSchemas = {
     })
   }),
 
+  'quickview:get-state': z.void(),
+  // No instanceId = plain "Open AppDeck" (restore the window without switching services).
+  'quickview:open-service': z.object({ instanceId: idSchema.optional() }),
+  'quickview:close': z.void(),
+
   'notification:list': z
     .object({
       limit: z.number().int().positive().max(500).optional(),

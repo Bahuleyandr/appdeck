@@ -50,6 +50,8 @@ function setup(): {
     deviceId,
     recipeLoader: new RecipeLoader(db),
     viewManager: { setBounds: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoom: vi.fn() },
+    badgeService: { snapshot: vi.fn(() => new Map()) },
+    quickView: { openApp: vi.fn(), hide: vi.fn(), notifyStateChanged: vi.fn() },
     sendPush: vi.fn(),
     sendDataChanged: vi.fn(),
     onSettingsChanged: vi.fn()
@@ -179,6 +181,33 @@ describe('ipc handlers', () => {
     await expect(
       tabCreate(null, { instanceId: service.id, url: 'https://web.whatsapp.com/' })
     ).resolves.toBeTruthy();
+  });
+
+  it('quickview channels serve main-process state and validate open payloads', async () => {
+    const { handlers, ctx, workspace } = setup();
+    const service = createServiceInstance(ctx.db, ctx.deviceId, {
+      recipeId: 'whatsapp',
+      workspaceId: workspace.id,
+      displayName: 'WhatsApp'
+    });
+
+    const state = (await getHandler(handlers, 'quickview:get-state')(null)) as {
+      services: Array<{ id: string }>;
+      notifications: unknown[];
+    };
+    expect(state.services.map((entry) => entry.id)).toContain(service.id);
+    expect(state.notifications).toEqual([]);
+
+    const openService = getHandler(handlers, 'quickview:open-service');
+    const openApp = (ctx.quickView as unknown as { openApp: ReturnType<typeof vi.fn> }).openApp;
+    await openService(null, { instanceId: service.id });
+    expect(openApp).toHaveBeenCalledWith(service.id);
+    await openService(null, {});
+    expect(openApp).toHaveBeenLastCalledWith(undefined);
+    await expect(openService(null, { instanceId: 42 })).rejects.toThrow(ZodError);
+
+    await getHandler(handlers, 'quickview:close')(null);
+    expect((ctx.quickView as unknown as { hide: ReturnType<typeof vi.fn> }).hide).toHaveBeenCalled();
   });
 
   it('settings:set only accepts known setting keys', async () => {

@@ -27,6 +27,11 @@ export class BadgeService {
     return this.apply();
   }
 
+  /** Live per-instance counts (read-only) — powers the tray quick-view without touching views. */
+  snapshot(): ReadonlyMap<string, UnreadCount> {
+    return this.counts;
+  }
+
   totalDirect(): number {
     return [...this.counts.values()].reduce((sum, count) => sum + count.direct, 0);
   }

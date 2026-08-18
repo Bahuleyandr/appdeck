@@ -118,6 +118,9 @@ export const invokeChannels = [
   'palette:query',
   'notify:incoming',
   'unread:report',
+  'quickview:get-state',
+  'quickview:open-service',
+  'quickview:close',
   'notification:list',
   'notification:markSeen',
   'notification:lastSeen',
@@ -165,9 +168,29 @@ export const serviceOnlyInvokeChannels = ['notify:incoming', 'unread:report'] as
 
 export type ServiceOnlyInvokeChannel = (typeof serviceOnlyInvokeChannels)[number];
 
-/** Every channel the renderer bridge may invoke — the contract minus service-only channels. */
+/**
+ * Invoked only by the tray quick-view window's dedicated preload; never exposed to the main
+ * renderer bridge (the main window has richer channels for the same data).
+ */
+export const quickViewInvokeChannels = [
+  'quickview:get-state',
+  'quickview:open-service',
+  'quickview:close'
+] as const;
+
+export type QuickViewInvokeChannel = (typeof quickViewInvokeChannels)[number];
+
+/**
+ * Pushed by main into the quick-view window while it is open. Deliberately not part of
+ * `pushChannels`, so the main renderer bridge never allowlists it.
+ */
+export const quickViewPushChannel = 'event:quickview-state' as const;
+
+/** Every channel the renderer bridge may invoke — the contract minus window-specific channels. */
 export const rendererInvokeChannels: readonly IpcChannel[] = invokeChannels.filter(
-  (channel) => !(serviceOnlyInvokeChannels as readonly string[]).includes(channel)
+  (channel) =>
+    !(serviceOnlyInvokeChannels as readonly string[]).includes(channel) &&
+    !(quickViewInvokeChannels as readonly string[]).includes(channel)
 );
 
 export const pushChannels = [

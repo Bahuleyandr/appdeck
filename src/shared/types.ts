@@ -620,6 +620,34 @@ export interface NotificationRecord {
   snoozed_until: number | null;
 }
 
+/** One service row in the tray quick-view popover. */
+export interface QuickViewService {
+  id: string;
+  name: string;
+  color: string | null;
+  muted: boolean;
+  unread: UnreadCount;
+}
+
+/** One notification row in the tray quick-view popover (body pre-truncated in main). */
+export interface QuickViewNotification {
+  id: number;
+  serviceId: string;
+  serviceName: string;
+  title: string;
+  body: string;
+  timestamp: number;
+}
+
+/** Snapshot served to the quick-view window; built purely from main-process data. */
+export interface QuickViewState {
+  services: QuickViewService[];
+  notifications: QuickViewNotification[];
+  totalUnread: number;
+  /** The `theme` setting so the popover matches the app without a settings channel. */
+  theme: string;
+}
+
 export interface ExtensionRecord {
   id: string;
   name: string;
