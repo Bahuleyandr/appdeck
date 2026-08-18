@@ -1,9 +1,17 @@
 name: Release
 
-# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build installers for
-# Windows, macOS, and Linux and upload them to a GitHub Release. Builds are signed only once
-# the signing secrets exist (see RELEASING.md); until then they are unsigned. The release is
+# Tag a commit (e.g. `git tag v0.3.0 && git push origin v0.3.0`) to build installers for
+# Windows and Linux and upload them to a GitHub Release. Builds are signed only once the
+# signing secrets exist (see RELEASING.md); until then they are unsigned. The release is
 # created as a DRAFT (see electron-builder.yml publish.releaseType) for manual review.
+#
+# macOS is NOT built here. Packaging failed identically on v0.2.0 and v0.3.0 with
+# `⨯ /Users/runner/work/appdeck/appdeck not a file` and nobody on the project has a Mac to
+# reproduce it on, so the job was removed rather than left permanently red. Note this is a
+# PACKAGING failure only — ci.yml still builds and tests on macos-latest and passes, so the
+# code itself is known good there. To restore: add `macos-latest` back to the matrix below.
+# Everything else macOS needs is still in place (the Apple env vars in the build step, the
+# macOS branch of the signing report, and the `mac:` block in electron-builder.yml).
 on:
   push:
     tags:
@@ -18,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -62,6 +70,7 @@ jobs:
                   echo "- Windows artifacts: **unsigned** (no CSC_LINK secret; SmartScreen will warn)"
                 fi
                 ;;
+              # Dormant while macOS is out of the matrix; kept for the restore path above.
               macOS)
                 if [ -n "$HAS_CSC" ]; then
                   echo "- macOS artifacts: **signed** (CSC_LINK provided)"

@@ -11,6 +11,17 @@ clicks **Settings → Diagnostics → Restart & install** once a build is downlo
 2. Create a GitHub **Personal Access Token** with `repo` scope (Contents: read/write). This is the
    publish credential — keep it out of git.
 
+## Platforms
+
+Tagged releases build **Windows and Linux** only. The macOS job was removed from
+`.github/workflows/release.yml` after packaging failed identically on v0.2.0 and v0.3.0
+(`⨯ /Users/runner/work/appdeck/appdeck not a file`) with no Mac available to reproduce it on.
+
+This is a packaging failure, not a portability one: `ci.yml` still runs typecheck, lint, tests
+and build on `macos-latest` and passes. The macOS signing and notarization setup documented
+below is therefore still accurate and still wired — it is simply not exercised until the job is
+restored by adding `macos-latest` back to the release matrix.
+
 ## Cut a release
 
 ```sh
