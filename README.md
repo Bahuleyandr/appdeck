@@ -15,7 +15,8 @@ Messenger, Gmail, …) as isolated, sleepable, multi-account panes inside one El
 - Optional provider-neutral **BYO AI**: scheduled **morning briefing**, inbox triage, saved
   prompts, and task extraction
 - Per-service **memory accounting** (see what every service costs, and what sleep saves)
-- App lock (Argon2id), tray + global hotkey, light/dark themes, auto-update
+- App lock (Argon2id), tray **quick view** (unread + recent notifications on left-click),
+  global hotkey, light/dark themes, auto-update
 
 ## Free Pro Controls
 
