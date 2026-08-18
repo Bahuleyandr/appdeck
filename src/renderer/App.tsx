@@ -80,8 +80,16 @@ export function App(): JSX.Element {
       }),
       api.on('event:locked', () => setLocked(true)),
       api.on('event:notification-clicked', (payload) => {
-        const event = payload as { instanceId: string };
-        void selectService(event.instanceId);
+        const event = payload as { instanceId: string; workspaceId?: string | null };
+        void (async () => {
+          // Main resolves the workspace that owns the service; switch there first, otherwise
+          // selectService drops the click as foreign and the user sees nothing happen.
+          const store = useAppStore.getState();
+          if (event.workspaceId && event.workspaceId !== store.selectedWorkspaceId) {
+            await store.selectWorkspace(event.workspaceId);
+          }
+          await useAppStore.getState().selectService(event.instanceId);
+        })();
       }),
       api.on('event:data-changed', () => {
         window.clearTimeout(reloadTimer);

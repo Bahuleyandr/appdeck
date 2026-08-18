@@ -38,6 +38,10 @@ export class QuickViewController {
   private window: BrowserWindow | null = null;
   private destroyTimer: NodeJS.Timeout | null = null;
   private hiddenAt = 0;
+  /** Whether the popover should be on screen once it is able to paint. */
+  private wantVisible = false;
+  /** Whether the current window has finished its first paint. */
+  private painted = false;
 
   constructor(
     private readonly preloadPath: string,
@@ -63,18 +67,28 @@ export class QuickViewController {
   }
 
   hide(): void {
-    if (!this.window || this.window.isDestroyed() || !this.window.isVisible()) {
+    // Recorded even when there is nothing to hide yet: a hide requested between create() and the
+    // first paint (an app lock firing on the idle timer, or Escape) must cancel the pending show,
+    // or ready-to-show would put notification previews on top of the lock screen.
+    this.wantVisible = false;
+    if (!this.window || this.window.isDestroyed()) {
       return;
     }
-    this.hiddenAt = Date.now();
-    this.window.hide();
+    if (this.window.isVisible()) {
+      this.hiddenAt = Date.now();
+      this.window.hide();
+    }
+    // Armed even for a window that never became visible, so a load that never paints cannot leave
+    // a renderer process alive until quit.
     this.scheduleDestroy();
   }
 
   /** Restore the full app (optionally focused on a service) and dismiss the popover. */
   openApp(instanceId?: string): void {
-    this.hide();
+    // Raise the main window first: hiding the foreground window surrenders foreground ownership,
+    // after which a focus() call can degrade to a taskbar flash on Windows.
     this.onOpenApp(instanceId);
+    this.hide();
   }
 
   /** Push a fresh snapshot while the popover is open; a no-op (zero cost) while it is closed. */
@@ -95,23 +109,19 @@ export class QuickViewController {
 
   private showAt(trayBounds: Rect | null): void {
     this.cancelDestroy();
+    this.wantVisible = true;
     const reused = this.window !== null && !this.window.isDestroyed();
     const window = reused ? (this.window as BrowserWindow) : this.create();
     this.window = window;
     const position = this.computePosition(trayBounds);
     window.setPosition(position.x, position.y);
-    if (reused) {
+    if (reused && this.painted) {
       window.webContents.send(quickViewPushChannel, this.getState());
       window.show();
-    } else {
-      // First open: wait for paint so the frameless window doesn't flash white. The renderer
-      // pulls its initial state itself via quickview:get-state on mount.
-      window.once('ready-to-show', () => {
-        if (!window.isDestroyed()) {
-          window.show();
-        }
-      });
     }
+    // Otherwise the ready-to-show handler installed in create() shows it once it can paint, so a
+    // frameless window never flashes white and a still-loading window is never shown blank. The
+    // renderer pulls its own initial state via quickview:get-state on mount.
   }
 
   private create(): BrowserWindow {
@@ -134,10 +144,30 @@ export class QuickViewController {
         nodeIntegration: false
       }
     });
+    this.painted = false;
+    window.once('ready-to-show', () => {
+      this.painted = true;
+      // Re-checked because the popover may have been dismissed while it was still loading.
+      if (this.wantVisible && !window.isDestroyed()) {
+        window.show();
+      }
+    });
+    window.webContents.on('did-fail-load', (_event, code, description) => {
+      // Without this the window would sit invisible and never paint, holding a renderer process.
+      console.error(`Quick view failed to load (${code}): ${description}`);
+      this.wantVisible = false;
+      if (!window.isDestroyed()) {
+        window.destroy();
+      }
+    });
     window.on('blur', () => this.hide());
     window.on('closed', () => {
-      this.cancelDestroy();
-      this.window = null;
+      // Guarded: a stale window's late 'closed' must not orphan a replacement.
+      if (this.window === window) {
+        this.cancelDestroy();
+        this.window = null;
+        this.painted = false;
+      }
     });
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
     if (rendererUrl) {

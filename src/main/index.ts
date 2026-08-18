@@ -34,6 +34,7 @@ import { UpdaterService } from './services/updater.js';
 import { CloudSyncService } from './sync/cloudSync.js';
 import { FileSyncService } from './sync/fileSync.js';
 import { ServiceViewManager } from './views/serviceViewManager.js';
+import { findWorkspaceIdForService } from './db/repositories/workspaceServices.js';
 import { restoreWindowForUserAttention } from './windows/attention.js';
 import { createMainWindow } from './windows/mainWindow.js';
 import { QuickViewController } from './windows/quickView.js';
@@ -177,7 +178,10 @@ if (!gotLock) {
         () => mainWindow,
         (instanceId) => {
           restoreWindowForUserAttention(mainWindow);
-          sendPush('event:notification-clicked', { instanceId });
+          sendPush('event:notification-clicked', {
+            instanceId,
+            workspaceId: findWorkspaceIdForService(db, instanceId)
+          });
         },
         () => getBoolSetting(db, 'global_dnd')
       );
@@ -338,7 +342,10 @@ if (!gotLock) {
         }
         restoreWindowForUserAttention(mainWindow);
         if (instanceId) {
-          sendPush('event:notification-clicked', { instanceId });
+          sendPush('event:notification-clicked', {
+            instanceId,
+            workspaceId: findWorkspaceIdForService(db, instanceId)
+          });
         }
       };
       quickViewController = new QuickViewController(
