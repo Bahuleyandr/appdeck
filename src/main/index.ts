@@ -349,12 +349,20 @@ if (!gotLock) {
 
       tray = new Tray(trayIcon());
       tray.setToolTip(APP_NAME);
+      // Left-click opens the quick-view popover (was: toggled the whole window); the full restore
+      // lives in the context menu and on double-click. While locked, skip the popover — it would
+      // surface notification previews — and open the app, which shows the lock screen. The
+      // context-menu "Quick view" item goes through the same guard for the same reason.
+      const onTrayActivate = (): void => {
+        if (lockService?.status().locked) {
+          toggleWindow();
+          return;
+        }
+        quickViewController?.toggle(tray?.getBounds() ?? null);
+      };
       const trayMenu = Menu.buildFromTemplate([
         { label: 'Open AppDeck', click: () => openAppFocused() },
-        {
-          label: 'Quick view',
-          click: () => quickViewController?.toggle(tray?.getBounds() ?? null)
-        },
+        { label: 'Quick view', click: onTrayActivate },
         { type: 'separator' },
         {
           label: 'Quit',
@@ -364,16 +372,6 @@ if (!gotLock) {
           }
         }
       ]);
-      // Left-click opens the quick-view popover (was: toggled the whole window); the full restore
-      // lives in the context menu and on double-click. While locked, skip the popover — it would
-      // surface notification previews — and open the app, which shows the lock screen.
-      const onTrayActivate = (): void => {
-        if (lockService?.status().locked) {
-          toggleWindow();
-          return;
-        }
-        quickViewController?.toggle(tray?.getBounds() ?? null);
-      };
       if (process.platform === 'linux') {
         // Most Linux trays (appindicator) never emit click events and need a persistent context
         // menu; where click does fire, it opens the quick view (positioned near the cursor,
