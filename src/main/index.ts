@@ -34,8 +34,11 @@ import { UpdaterService } from './services/updater.js';
 import { CloudSyncService } from './sync/cloudSync.js';
 import { FileSyncService } from './sync/fileSync.js';
 import { ServiceViewManager } from './views/serviceViewManager.js';
+import { findWorkspaceIdForService } from './db/repositories/workspaceServices.js';
 import { restoreWindowForUserAttention } from './windows/attention.js';
 import { createMainWindow } from './windows/mainWindow.js';
+import { QuickViewController } from './windows/quickView.js';
+import { buildQuickViewState } from './windows/quickViewState.js';
 
 let mainWindow: BrowserWindow | null = null;
 let viewManager: ServiceViewManager | null = null;
@@ -45,6 +48,7 @@ let linkRouter: LinkRouter | null = null;
 let automationRuntime: AutomationRuntime | null = null;
 let peerSyncRuntime: PeerSyncRuntime | null = null;
 let notificationService: NotificationService | null = null;
+let quickViewController: QuickViewController | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let notificationPruneTimer: NodeJS.Timeout | null = null;
@@ -149,6 +153,8 @@ if (!gotLock) {
 
       lockService = new AppLockService(db, () => {
         viewManager?.hideAll();
+        // Don't leave notification previews floating on a locked machine.
+        quickViewController?.hide();
         sendPush('event:locked');
       });
       lockService.setIdleTimeoutMinutes(getSetting(db, 'auto_lock_minutes'));
@@ -172,7 +178,10 @@ if (!gotLock) {
         () => mainWindow,
         (instanceId) => {
           restoreWindowForUserAttention(mainWindow);
-          sendPush('event:notification-clicked', { instanceId });
+          sendPush('event:notification-clicked', {
+            instanceId,
+            workspaceId: findWorkspaceIdForService(db, instanceId)
+          });
         },
         () => getBoolSetting(db, 'global_dnd')
       );
@@ -265,6 +274,12 @@ if (!gotLock) {
         trackerBlocker,
         updaterService,
         peerSyncRuntime,
+        // Lazy handle: the controller is constructed a few lines below, after wireWindow exists.
+        quickView: {
+          openApp: (instanceId) => quickViewController?.openApp(instanceId),
+          hide: () => quickViewController?.hide(),
+          notifyStateChanged: () => quickViewController?.notifyStateChanged()
+        },
         sendPush,
         sendDataChanged,
         onSettingsChanged: () => {
@@ -316,22 +331,67 @@ if (!gotLock) {
       };
       wireWindow(mainWindow);
 
+      // Restore the full app (recreating the window if it was closed, e.g. on macOS), optionally
+      // focused on one service. Uses the same event the OS-notification click path uses, so parked
+      // views resume through the normal show → bounds-resync lifecycle.
+      const openAppFocused = (instanceId?: string): void => {
+        if (!mainWindow) {
+          mainWindow = createMainWindow(bridgePreload);
+          viewManager?.setWindow(mainWindow);
+          wireWindow(mainWindow);
+        }
+        restoreWindowForUserAttention(mainWindow);
+        if (instanceId) {
+          sendPush('event:notification-clicked', {
+            instanceId,
+            workspaceId: findWorkspaceIdForService(db, instanceId)
+          });
+        }
+      };
+      quickViewController = new QuickViewController(
+        join(__dirname, '../preload/quickview.cjs'),
+        () => buildQuickViewState(db, badgeService.snapshot()),
+        openAppFocused
+      );
+
       tray = new Tray(trayIcon());
       tray.setToolTip(APP_NAME);
-      tray.setContextMenu(
-        Menu.buildFromTemplate([
-          { label: 'Show AppDeck', click: toggleWindow },
-          { type: 'separator' },
-          {
-            label: 'Quit',
-            click: () => {
-              isQuitting = true;
-              app.quit();
-            }
+      // Left-click opens the quick-view popover (was: toggled the whole window); the full restore
+      // lives in the context menu and on double-click. While locked, skip the popover — it would
+      // surface notification previews — and open the app, which shows the lock screen. The
+      // context-menu "Quick view" item goes through the same guard for the same reason.
+      const onTrayActivate = (): void => {
+        if (lockService?.status().locked) {
+          toggleWindow();
+          return;
+        }
+        quickViewController?.toggle(tray?.getBounds() ?? null);
+      };
+      const trayMenu = Menu.buildFromTemplate([
+        { label: 'Open AppDeck', click: () => openAppFocused() },
+        { label: 'Quick view', click: onTrayActivate },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          click: () => {
+            isQuitting = true;
+            app.quit();
           }
-        ])
-      );
-      tray.on('click', toggleWindow);
+        }
+      ]);
+      if (process.platform === 'linux') {
+        // Most Linux trays (appindicator) never emit click events and need a persistent context
+        // menu; where click does fire, it opens the quick view (positioned near the cursor,
+        // since getBounds() is typically empty there).
+        tray.setContextMenu(trayMenu);
+        tray.on('click', onTrayActivate);
+      } else {
+        // No persistent context menu on Windows/macOS: macOS would otherwise open the menu on
+        // left-click and never emit 'click'. Right-click pops the same menu explicitly.
+        tray.on('right-click', () => tray?.popUpContextMenu(trayMenu));
+        tray.on('click', onTrayActivate);
+        tray.on('double-click', toggleWindow);
+      }
 
       registerHotkey();
 
@@ -353,6 +413,8 @@ if (!gotLock) {
         sleepManager?.stop();
         notificationService?.dispose();
         notificationService = null;
+        quickViewController?.dispose();
+        quickViewController = null;
         automationRuntime?.dispose();
         automationRuntime = null;
         peerSyncRuntime?.dispose();

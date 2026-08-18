@@ -27,6 +27,15 @@ export class BadgeService {
     return this.apply();
   }
 
+  /**
+   * Per-instance counts for the tray quick view, without touching a service view. A copy, not the
+   * live map: `ReadonlyMap` is a compile-time promise only, and callers outside this class must
+   * not be able to mutate the badge state.
+   */
+  snapshot(): ReadonlyMap<string, UnreadCount> {
+    return new Map(this.counts);
+  }
+
   totalDirect(): number {
     return [...this.counts.values()].reduce((sum, count) => sum + count.direct, 0);
   }

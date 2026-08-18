@@ -388,7 +388,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectService: async (serviceId) => {
     const { selectedWorkspaceId, layoutMode, selectedServiceIds } = get();
     if (!selectedWorkspaceId) return;
-    if (get().services.some((service) => service.id === serviceId && service.disabled)) return;
+    // The id must belong to the workspace on screen. A foreign id — the tray quick view lists
+    // every workspace's services, and notification/link/automation clicks arrive from background
+    // ones — would otherwise be written into this workspace's layout, where TileLayout cannot
+    // resolve it and silently falls back to showing arbitrary services.
+    const target = get().services.find((service) => service.id === serviceId);
+    if (!target || target.disabled) return;
     const next =
       layoutMode === 'single'
         ? [serviceId]

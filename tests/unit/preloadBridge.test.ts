@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   invokeChannels,
   pushChannels,
+  quickViewInvokeChannels,
+  quickViewPushChannel,
   rendererInvokeChannels,
   serviceOnlyInvokeChannels
 } from '../../src/shared/ipc-channels.js';
@@ -38,6 +40,28 @@ describe('preload bridge', () => {
     for (const channel of serviceOnlyInvokeChannels) {
       expect(invokeChannels).toContain(channel);
       expect(rendererInvokeChannels).not.toContain(channel);
+    }
+  });
+
+  it('keeps quick-view channels out of the renderer bridge but in the contract', () => {
+    for (const channel of quickViewInvokeChannels) {
+      expect(invokeChannels).toContain(channel);
+      expect(rendererInvokeChannels).not.toContain(channel);
+    }
+  });
+
+  it('pins the quick-view preload to its channels without importing shared chunks', () => {
+    // The quick-view preload uses literals: a shared import would make Rollup emit a common
+    // chunk that a sandboxed preload cannot require() at runtime. This test keeps the literals
+    // from drifting against the shared channel list.
+    const quickViewPreloadSource = readFileSync(
+      new URL('../../src/preload/quickview.ts', import.meta.url),
+      'utf8'
+    );
+    expect(quickViewPreloadSource).not.toMatch(/from '\.\.\/shared\//);
+    expect(quickViewPreloadSource).toContain(`'${quickViewPushChannel}'`);
+    for (const channel of quickViewInvokeChannels) {
+      expect(quickViewPreloadSource).toContain(`'${channel}'`);
     }
   });
 

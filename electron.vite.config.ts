@@ -20,7 +20,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           bridge: resolve(__dirname, 'src/preload/bridge.ts'),
-          service: resolve(__dirname, 'src/preload/service-preload.ts')
+          service: resolve(__dirname, 'src/preload/service-preload.ts'),
+          quickview: resolve(__dirname, 'src/preload/quickview.ts')
         },
         output: {
           format: 'cjs',
@@ -31,6 +32,15 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        input: {
+          // Main window plus the tray quick-view popover page.
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          quickview: resolve(__dirname, 'src/renderer/quickview.html')
+        }
+      }
+    }
   }
 });

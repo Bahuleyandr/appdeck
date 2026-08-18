@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Tray quick view.** Left-clicking the tray icon opens a small popover listing services with
+  unread messages and your most recent notifications, so you can triage without restoring the
+  window. Clicking a row opens the app focused on that service. It reads only main-process data,
+  so parked and dozing services stay asleep, and it is skipped entirely while the app is locked.
+
+### Fixed
+
+- **Clicking a notification for a service in another workspace now switches to that workspace**
+  instead of quietly doing nothing useful. Previously the id was written into the *current*
+  workspace's layout, which could not resolve it and fell back to displaying an arbitrary service.
+  Affects OS-notification clicks, link routing and automations, not just the new quick view.
+
+### Changed
+
+- **Tray click behaviour.** Left-click now opens the quick view; **double-click** shows/hides the
+  main window (previously single-click did). Right-click still opens the tray menu, which gained
+  an explicit *Open AppDeck* item. On Linux the tray keeps a persistent context menu, because most
+  Linux trays never emit click events.
+
 ## 0.2.0 — 2026-08-16
 
 First release since the initial 0.1.0 scaffold. The app went from "feature-complete on paper" to
