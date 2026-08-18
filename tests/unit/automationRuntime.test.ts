@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { listAiRuns } from '../../src/main/db/repositories/aiRuns.js';
 import { upsertAiPrompt } from '../../src/main/db/repositories/aiPrompts.js';
 import { getAutomation, upsertAutomation } from '../../src/main/db/repositories/automations.js';
+import { createServiceInstance } from '../../src/main/db/repositories/serviceInstances.js';
 import { listTasks } from '../../src/main/db/repositories/tasks.js';
+import { listWorkspaces } from '../../src/main/db/repositories/workspaces.js';
 import { AutomationRuntime } from '../../src/main/services/automationRuntime.js';
 import { createTestDb } from './helpers.js';
 
@@ -73,6 +75,32 @@ describe('automation runtime', () => {
     expect(listTasks(db).map((task) => task.title)).toEqual(['Follow up on urgent notification']);
     expect(viewManager.sleep).toHaveBeenCalledWith('svc-1');
     expect(getAutomation(db, rule.id)?.last_run_at).toEqual(expect.any(Number));
+  });
+
+  it('openService pushes notification-clicked with the owning workspace id', () => {
+    const { db, deviceId } = createTestDb();
+    const workspace = listWorkspaces(db)[0];
+    if (!workspace) throw new Error('Expected default workspace');
+    const service = createServiceInstance(db, deviceId, {
+      recipeId: 'github',
+      workspaceId: workspace.id,
+      displayName: 'GitHub'
+    });
+    upsertAutomation(db, {
+      name: 'Open on urgent',
+      trigger: { type: 'notification', matchText: 'urgent' },
+      actions: [{ type: 'openService', targetId: service.id }]
+    });
+    const { runtime, sendPush } = makeRuntime(db);
+
+    runtime.handleNotification({ instanceId: service.id, title: 'urgent thing' });
+
+    // Without workspaceId the renderer drops the selection when the service lives in a
+    // background workspace.
+    expect(sendPush).toHaveBeenCalledWith('event:notification-clicked', {
+      instanceId: service.id,
+      workspaceId: workspace.id
+    });
   });
 
   it('fires a schedule automation once per window occurrence, not every tick', () => {

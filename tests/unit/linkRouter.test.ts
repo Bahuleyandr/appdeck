@@ -40,11 +40,12 @@ describe('link router', () => {
       displayName: 'GitHub'
     });
     const viewManager = fakeViewManager();
+    const sendPush = vi.fn();
     const router = new LinkRouter(
       db,
       new RecipeLoader(db),
       viewManager as unknown as ServiceViewManager,
-      vi.fn()
+      sendPush
     );
 
     const target = 'https://github.com/Bahuleyandr/appdeck';
@@ -53,6 +54,12 @@ describe('link router', () => {
     expect(viewManager.routeNavigate).toHaveBeenCalledWith(service.id, target);
     expect(viewManager.focus).toHaveBeenCalledWith(service.id);
     expect(viewManager.navigate).not.toHaveBeenCalled();
+    // The click event must carry the owning workspace, or the renderer drops the selection
+    // when that workspace is not the active one.
+    expect(sendPush).toHaveBeenCalledWith('event:notification-clicked', {
+      instanceId: service.id,
+      workspaceId: workspace.id
+    });
   });
 
   it('opens unmatched URLs externally', () => {

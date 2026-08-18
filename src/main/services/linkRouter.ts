@@ -2,6 +2,7 @@ import { shell } from 'electron';
 import type Database from 'better-sqlite3';
 import { listServiceInstances } from '../db/repositories/serviceInstances.js';
 import { listLinkRules, matchLinkRule } from '../db/repositories/linkRules.js';
+import { findWorkspaceIdForService } from '../db/repositories/workspaceServices.js';
 import type { RecipeLoader } from '../recipes/loader.js';
 import type { ServiceViewManager } from '../views/serviceViewManager.js';
 
@@ -46,7 +47,10 @@ export class LinkRouter {
   private routeTo(instanceId: string, target: string): void {
     this.viewManager.routeNavigate(instanceId, target);
     this.viewManager.focus(instanceId);
-    this.sendPush('event:notification-clicked', { instanceId });
+    this.sendPush('event:notification-clicked', {
+      instanceId,
+      workspaceId: findWorkspaceIdForService(this.db, instanceId)
+    });
   }
 
   private matchRule(url: string): string | 'external' | null {
