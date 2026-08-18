@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-08-18
+
+Adds the tray quick view, and fixes a cross-workspace notification bug that predates it.
 
 ### Added
 
@@ -14,7 +16,8 @@
 - **Clicking a notification for a service in another workspace now switches to that workspace**
   instead of quietly doing nothing useful. Previously the id was written into the *current*
   workspace's layout, which could not resolve it and fell back to displaying an arbitrary service.
-  Affects OS-notification clicks, link routing and automations, not just the new quick view.
+  Affects OS-notification clicks, link routing and automations, not just the new quick view —
+  all four senders of the click event now carry the owning workspace.
 
 ### Changed
 
