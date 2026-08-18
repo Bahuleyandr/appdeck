@@ -5,13 +5,13 @@ name: Release
 # signing secrets exist (see RELEASING.md); until then they are unsigned. The release is
 # created as a DRAFT (see electron-builder.yml publish.releaseType) for manual review.
 #
-# macOS is NOT built here. Packaging failed identically on v0.2.0 and v0.3.0 with
-# `⨯ /Users/runner/work/appdeck/appdeck not a file` and nobody on the project has a Mac to
-# reproduce it on, so the job was removed rather than left permanently red. Note this is a
-# PACKAGING failure only — ci.yml still builds and tests on macos-latest and passes, so the
-# code itself is known good there. To restore: add `macos-latest` back to the matrix below.
-# Everything else macOS needs is still in place (the Apple env vars in the build step, the
-# macOS branch of the signing report, and the `mac:` block in electron-builder.yml).
+# macOS was red on v0.2.0 and v0.3.0 with `⨯ <projectDir> not a file`, fixed in the
+# "Configure code-signing environment" step below. Cause: a GitHub secret that does not exist
+# expands to an EMPTY STRING, and macPackager's guard is `cscLink == null` — which "" passes.
+# electron-builder then ran resolveCscLinkPath("", projectDir), got the repo root, and rejected
+# it for not being a file. Windows survived only because windowsSignToolManager treats empty as
+# absent. $GITHUB_ENV cannot unset a variable, so the signing vars are no longer declared on the
+# build step at all; they are exported only when they actually hold a value.
 on:
   push:
     tags:
@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -37,25 +37,53 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # Export the signing secrets ONLY when they hold a value. Declaring them on the build
+      # step directly is what broke macOS: an absent secret becomes "", which is not `== null`,
+      # so electron-builder treated it as a real certificate path. Empty values must therefore
+      # never be defined at all, and $GITHUB_ENV cannot unset — hence this step.
+      - name: Configure code-signing environment
+        shell: bash
+        env:
+          IN_CSC_LINK: ${{ secrets.CSC_LINK }}
+          IN_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          IN_APPLE_ID: ${{ secrets.APPLE_ID }}
+          IN_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          IN_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          export_if_set() {
+            local name="$1" value="$2"
+            [ -n "$value" ] || return 0
+            # Heredoc form: tolerates values containing newlines or '='.
+            {
+              echo "${name}<<__EOF_${name}__"
+              echo "$value"
+              echo "__EOF_${name}__"
+            } >> "$GITHUB_ENV"
+          }
+          export_if_set CSC_LINK "${IN_CSC_LINK:-}"
+          export_if_set CSC_KEY_PASSWORD "${IN_CSC_KEY_PASSWORD:-}"
+          export_if_set APPLE_ID "${IN_APPLE_ID:-}"
+          export_if_set APPLE_APP_SPECIFIC_PASSWORD "${IN_APPLE_APP_SPECIFIC_PASSWORD:-}"
+          export_if_set APPLE_TEAM_ID "${IN_APPLE_TEAM_ID:-}"
+          if [ -z "${IN_CSC_LINK:-}" ]; then
+            # Without a certificate, stop electron-builder adopting some unrelated identity that
+            # happens to be in the runner keychain; produce a clean unsigned build instead.
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+          fi
+
+      # Tag builds publish to a draft release; a manual workflow_dispatch is a dry run, so the
+      # workflow itself can be tested (this fix was verified that way) without cutting a release.
       - name: Build and publish installers
+        if: github.ref_type == 'tag'
         run: npm run release
         env:
           # Provided automatically by Actions; lets electron-updater's github provider upload assets.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code-signing secrets. electron-builder reads these automatically when set;
-          # leave unset for unsigned builds. CSC_LINK = base64 of a .pfx (Win) or .p12 (mac).
-          # Missing secrets expand to empty strings, which electron-builder treats as absent
-          # (verified against 26.x: windowsSignToolManager skips on empty CSC_LINK and
-          # MacTargetHelper.getNotarizeOptions skips when the Apple vars are all falsy), so
-          # runs without secrets still produce unsigned artifacts.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # macOS notarization (needs all three, plus CSC_LINK holding a Developer ID
-          # Application .p12 so the build is signed first). Partially-set credentials fail
-          # the build loudly instead of silently shipping un-notarized artifacts.
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Build installers (dry run, no publish)
+        if: github.ref_type != 'tag'
+        run: npm run release:dry
       - name: Report signing status
         if: always()
         shell: bash
@@ -70,7 +98,6 @@ jobs:
                   echo "- Windows artifacts: **unsigned** (no CSC_LINK secret; SmartScreen will warn)"
                 fi
                 ;;
-              # Dormant while macOS is out of the matrix; kept for the restore path above.
               macOS)
                 if [ -n "$HAS_CSC" ]; then
                   echo "- macOS artifacts: **signed** (CSC_LINK provided)"

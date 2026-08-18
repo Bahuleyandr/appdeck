@@ -13,14 +13,19 @@ clicks **Settings → Diagnostics → Restart & install** once a build is downlo
 
 ## Platforms
 
-Tagged releases build **Windows and Linux** only. The macOS job was removed from
-`.github/workflows/release.yml` after packaging failed identically on v0.2.0 and v0.3.0
-(`⨯ /Users/runner/work/appdeck/appdeck not a file`) with no Mac available to reproduce it on.
+Tagged releases build **Windows, macOS and Linux**.
 
-This is a packaging failure, not a portability one: `ci.yml` still runs typecheck, lint, tests
-and build on `macos-latest` and passes. The macOS signing and notarization setup documented
-below is therefore still accurate and still wired — it is simply not exercised until the job is
-restored by adding `macos-latest` back to the release matrix.
+macOS releases were broken for v0.2.0 and v0.3.0 and are fixed as of the next tag. The cause was
+not macOS-specific code but the workflow: a GitHub secret that does not exist expands to an empty
+string, and electron-builder's macOS signing guard is `cscLink == null`, which an empty string
+passes. It then resolved `""` as a path relative to the project directory, got the repo root, and
+failed with `⨯ <projectDir> not a file`. Windows was unaffected only because its signing manager
+treats an empty value as absent. The workflow now exports the signing variables only when they
+actually hold a value, and sets `CSC_IDENTITY_AUTO_DISCOVERY=false` when there is no certificate.
+
+Running the Release workflow manually (`workflow_dispatch`) performs a **dry run** — it builds
+installers for all three platforms but publishes nothing, so workflow changes can be verified
+without cutting a release.
 
 ## Cut a release
 
